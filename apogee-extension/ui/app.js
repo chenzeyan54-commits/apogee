@@ -97,6 +97,7 @@ import {
   NOTHING_TO_SUMMARIZE_ERROR_MSG,
   COULD_NOT_EXTRACT_TEXT_FROM_PDF_ERROR_MSG,
 } from "../lib/util/messages.js";
+import { applyI18nToDom } from "../lib/util/i18n.js";
 
 async function isSidePanelOpenForTab(tabId) {
   if (!tabId || typeof chrome.runtime?.sendMessage !== "function") return false;
@@ -1941,6 +1942,11 @@ async function updateSummarizeShortcutHint() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    applyI18nToDom(document);
+  } catch (err) {
+    console.error("i18n hydration failed:", err);
+  }
   if (process.env.TARGET_BROWSER === "firefox") {
     webllmProviderOption?.classList.add("hidden");
   }

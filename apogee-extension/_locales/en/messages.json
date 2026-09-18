@@ -1,0 +1,424 @@
+{
+  "appName": { "message": "Apogee", "description": "Extension name" },
+  "appDescription": {
+    "message": "AI browser assistant for articles, videos, emails and more. Runs in-browser via WebGPU, WebAssembly, and Ollama.",
+    "description": "Extension description shown in the web store"
+  },
+  "appHtmlLang": {
+    "message": "en",
+    "description": "HTML lang attribute for the popup document"
+  },
+  "apogeeHome": {
+    "message": "Apogee home",
+    "description": "Home view aria label"
+  },
+  "apogeeLogo": { "message": "Apogee Logo", "description": "Logo alt text" },
+  "checking": {
+    "message": "Checking...",
+    "description": "Status pill while provider status loads"
+  },
+  "toggleTheme": {
+    "message": "Toggle theme",
+    "description": "Theme toggle button label"
+  },
+  "settings": {
+    "message": "Settings",
+    "description": "Settings button label and title"
+  },
+  "openInSidePanel": {
+    "message": "Open in side panel",
+    "description": "Side panel button label"
+  },
+  "summarizeThisPage": {
+    "message": "Summarize this page",
+    "description": "Primary summarize button"
+  },
+  "responseFormat": {
+    "message": "Response format",
+    "description": "Format radiogroup label"
+  },
+  "formatBullets": {
+    "message": "bullets",
+    "description": "Bullets format option"
+  },
+  "formatSentences": {
+    "message": "sentences",
+    "description": "Sentences format option"
+  },
+  "formatParagraphs": {
+    "message": "paragraphs",
+    "description": "Paragraphs format option"
+  },
+  "askApogeeQuestion": {
+    "message": "Ask Apogee a question",
+    "description": "Ask entry button"
+  },
+  "pasteText": {
+    "message": "Paste text",
+    "description": "Paste text chip button"
+  },
+  "uploadFile": {
+    "message": "Upload file",
+    "description": "Upload file chip button"
+  },
+  "selectText": {
+    "message": "Select text",
+    "description": "Select text chip button"
+  },
+  "selectTextHint": {
+    "message": "Click, then select text on the webpage",
+    "description": "Select text button tooltip"
+  },
+  "webgpuUnsupportedLead": {
+    "message": "WebGPU is not supported in this browser. Use",
+    "description": "WebGPU warning lead text"
+  },
+  "webgpuLocalOllama": {
+    "message": "Local Ollama",
+    "description": "WebGPU warning provider name"
+  },
+  "webgpuUnsupportedTail": {
+    "message": "mode in Settings, or switch to Chrome/Edge.",
+    "description": "WebGPU warning tail text"
+  },
+  "webgpuWhatMeans": {
+    "message": "What does this mean?",
+    "description": "WebGPU warning docs link"
+  },
+  "pastSummaries": {
+    "message": "Past Summaries",
+    "description": "Past summaries heading"
+  },
+  "filterByTitle": {
+    "message": "Filter by title…",
+    "description": "Past summaries filter placeholder"
+  },
+  "filterPastByTitle": {
+    "message": "Filter past summaries by title",
+    "description": "Past summaries filter aria label"
+  },
+  "summaryView": {
+    "message": "Summary",
+    "description": "Summary view aria label"
+  },
+  "downloadingModel": {
+    "message": "Downloading model...",
+    "description": "Model progress title"
+  },
+  "modelDownloadProgress": {
+    "message": "Model download progress",
+    "description": "Model progress bar aria label"
+  },
+  "showLogs": { "message": "Show logs", "description": "Show logs toggle" },
+  "offscreenLogs": {
+    "message": "Offscreen Logs",
+    "description": "Debug logs title"
+  },
+  "clear": { "message": "Clear", "description": "Clear debug logs button" },
+  "logsPrivacyWarning": {
+    "message": "⚠️ These logs may contain details about the page you were viewing. Review before pasting into a public issue.",
+    "description": "Debug logs privacy warning"
+  },
+  "noLogsYet": {
+    "message": "No logs recorded. Try starting summary or chat.",
+    "description": "Debug logs empty state"
+  },
+  "summarizeThisPageHeading": {
+    "message": "Summarize this page",
+    "description": "Summary card heading"
+  },
+  "copyAsMarkdown": {
+    "message": "Copy as Markdown",
+    "description": "Copy markdown button"
+  },
+  "exportAsJson": {
+    "message": "Export as JSON",
+    "description": "Export JSON button"
+  },
+  "summaryPlaceholder": {
+    "message": "Summary will appear here.",
+    "description": "Summary placeholder text"
+  },
+  "resummarize": {
+    "message": "Re-summarize",
+    "description": "Re-summarize hint button"
+  },
+  "resummarizeThisPage": {
+    "message": "Resummarize this page",
+    "description": "Resummarize button label"
+  },
+  "cancel": { "message": "Cancel", "description": "Cancel button" },
+  "suggestedPrompts": {
+    "message": "Suggested Prompts",
+    "description": "Prompts heading"
+  },
+  "hidePrompts": {
+    "message": "Hide prompts",
+    "description": "Hide prompts button"
+  },
+  "askApogee": { "message": "Ask Apogee", "description": "Chat heading" },
+  "copyAnswer": {
+    "message": "Copy answer",
+    "description": "Copy answer button"
+  },
+  "questionTag": { "message": "Question", "description": "Prompts toggle tag" },
+  "askPlaceholder": {
+    "message": "Type here to ask · Enter to send",
+    "description": "Question input placeholder"
+  },
+  "askAboutPage": {
+    "message": "Ask a question about this page",
+    "description": "Question input aria label"
+  },
+  "send": { "message": "Send", "description": "Send button label" },
+  "settingsTitle": {
+    "message": "Settings",
+    "description": "Settings view title"
+  },
+  "back": { "message": "Back", "description": "Back button label" },
+  "status": { "message": "Status", "description": "Status card title" },
+  "aiProvider": {
+    "message": "AI Provider",
+    "description": "Provider card title"
+  },
+  "providerWebllm": {
+    "message": "In-Browser AI (GPU)",
+    "description": "WebLLM provider label"
+  },
+  "providerTransformers": {
+    "message": "In-Browser AI (CPU)",
+    "description": "Transformers provider label"
+  },
+  "providerOllama": {
+    "message": "Local Ollama",
+    "description": "Ollama provider label"
+  },
+  "providerLlamacpp": {
+    "message": "Local LLaMA.cpp",
+    "description": "llama.cpp provider label"
+  },
+  "inBrowserModel": {
+    "message": "In-Browser Model",
+    "description": "Model list title"
+  },
+  "ollamaCard": { "message": "Ollama", "description": "Ollama settings title" },
+  "ollamaUrl": {
+    "message": "Ollama URL",
+    "description": "Ollama URL field label"
+  },
+  "localLlm": {
+    "message": "Local LLM",
+    "description": "Local model list title"
+  },
+  "llamacppCard": {
+    "message": "Local LLaMA.cpp",
+    "description": "llama.cpp settings title"
+  },
+  "llamacppUrl": {
+    "message": "Local LLaMA.cpp URL",
+    "description": "llama.cpp URL label"
+  },
+  "apiKey": { "message": "API key", "description": "API key field label" },
+  "apiKeyHint": {
+    "message": "(only if started with --api-key)",
+    "description": "API key hint"
+  },
+  "apiKeyPlaceholder": {
+    "message": "Leave empty for most servers",
+    "description": "API key placeholder"
+  },
+  "modelName": {
+    "message": "Model name",
+    "description": "Model name field label"
+  },
+  "modelNamePlaceholder": {
+    "message": "Detected from the server",
+    "description": "Model name placeholder"
+  },
+  "summaryLanguage": {
+    "message": "Summary Language",
+    "description": "Language card title"
+  },
+  "translationEngine": {
+    "message": "Translation Engine",
+    "description": "Translation card title"
+  },
+  "translatorOpus": {
+    "message": "Dedicated translator (Opus-MT, downloads)",
+    "description": "Opus translator option"
+  },
+  "translatorLlm": {
+    "message": "Summarization model",
+    "description": "LLM translator option"
+  },
+  "appearanceTheme": {
+    "message": "Appearance Theme",
+    "description": "Theme card title"
+  },
+  "themeDark": { "message": "Dark Theme", "description": "Dark theme option" },
+  "themeLight": {
+    "message": "Light Theme",
+    "description": "Light theme option"
+  },
+  "themeSystem": {
+    "message": "System Preference",
+    "description": "System theme option"
+  },
+  "customInstructions": {
+    "message": "Custom Instructions",
+    "description": "Custom instructions title"
+  },
+  "customInstructionsHint": {
+    "message": "Extra instructions added to every summary and answer, on top of Apogee's built-in prompt, e.g. \"Explain like I'm five\", \"Focus on the technical details\", or \"Answer in a formal tone\". Leave blank to use the defaults.",
+    "description": "Custom instructions help text"
+  },
+  "customInstructionsPlaceholder": {
+    "message": "e.g. Keep it concise and highlight any action items.",
+    "description": "Custom instructions placeholder"
+  },
+  "sponsorBlock": {
+    "message": "SponsorBlock",
+    "description": "SponsorBlock title"
+  },
+  "sponsorBlockOn": {
+    "message": "Use SponsorBlock to skip sponsor segments",
+    "description": "SponsorBlock on option"
+  },
+  "sponsorBlockOff": {
+    "message": "Stay fully local (don't contact SponsorBlock)",
+    "description": "SponsorBlock off option"
+  },
+  "privacy": { "message": "Privacy", "description": "Privacy card title" },
+  "saveHistoryOn": {
+    "message": "Save summaries & history locally",
+    "description": "Save history on option"
+  },
+  "saveHistoryOff": {
+    "message": "Don't save, and delete what's already saved",
+    "description": "Save history off option"
+  },
+  "historyDeleteAndOff": {
+    "message": "Delete and turn off",
+    "description": "History wipe confirm button"
+  },
+  "privateHostsHint": {
+    "message": "Pages on known webmail and chat hosts are never saved. Add any other host that should be treated the same way, one per line, e.g. your own mail server or a patient portal. A host also covers its subdomains.",
+    "description": "Private hosts help text"
+  },
+  "privateHostsPlaceholder": {
+    "message": "mail.example.com\nportal.myclinic.org",
+    "description": "Private hosts placeholder"
+  },
+  "clearCached": {
+    "message": "Clear cached summaries & page data",
+    "description": "Clear data button"
+  },
+  "activityAudit": {
+    "message": "Activity & Privacy Audit",
+    "description": "Audit card title"
+  },
+  "networkEgress": {
+    "message": "Network Egress:",
+    "description": "Audit network label"
+  },
+  "pageAccessHistory": {
+    "message": "Page Access History:",
+    "description": "Audit access label"
+  },
+  "pagesProcessed": {
+    "message": "$COUNT$ pages processed",
+    "description": "Audit access count",
+    "placeholders": { "count": { "content": "$1", "example": "3" } }
+  },
+  "storageRetention": {
+    "message": "Storage Retention:",
+    "description": "Audit storage label"
+  },
+  "cachedItems": {
+    "message": "Cached items: $COUNT$",
+    "description": "Audit storage count",
+    "placeholders": { "count": { "content": "$1", "example": "3" } }
+  },
+  "recentAccessLog": {
+    "message": "Recent Page Access Log",
+    "description": "Audit log heading"
+  },
+  "noAccessYet": {
+    "message": "No page access recorded yet.",
+    "description": "Audit log empty state"
+  },
+  "diagnostics": {
+    "message": "Diagnostics",
+    "description": "Diagnostics title"
+  },
+  "diagnosticsHint": {
+    "message": "Records what the AI engine is doing as it loads and generates. Off by default; turn it on before reproducing a bug, then attach the log panel's output (it appears with the model progress bar while a summary runs).",
+    "description": "Diagnostics help text"
+  },
+  "diagnosticsOff": {
+    "message": "Don't record engine logs",
+    "description": "Diagnostics off option"
+  },
+  "diagnosticsOn": {
+    "message": "Record engine logs",
+    "description": "Diagnostics on option"
+  },
+  "copyDiagnostics": {
+    "message": "Copy diagnostics as Markdown",
+    "description": "Copy diagnostics button"
+  },
+  "copyDiagnosticsHint": {
+    "message": "Custom instructions and a non-loopback Ollama host are reported as a shape only, never their contents.",
+    "description": "Diagnostics copy hint"
+  },
+  "getInTouch": {
+    "message": "Get in touch",
+    "description": "Contact button and title"
+  },
+  "contribute": { "message": "Contribute", "description": "Contribute button" },
+  "reportBug": {
+    "message": "Report a bug",
+    "description": "Report bug button"
+  },
+  "requestFeature": {
+    "message": "Request a feature",
+    "description": "Request feature button"
+  },
+  "madeWith": { "message": "Made with", "description": "Footer lead text" },
+  "madeWithBy": {
+    "message": "by darshi1337 and",
+    "description": "Footer attribution"
+  },
+  "contributors": {
+    "message": "contributors",
+    "description": "Contributors link"
+  },
+  "pasteDialogTitle": {
+    "message": "Paste text to summarize",
+    "description": "Paste dialog title"
+  },
+  "pasteDialogLabel": {
+    "message": "Add text below",
+    "description": "Paste dialog label"
+  },
+  "summarizeVerb": {
+    "message": "Summarize",
+    "description": "Paste dialog submit"
+  },
+  "errorCouldNotReadPage": {
+    "message": "Couldn't read this page. Try reloading it, or pick a different tab.",
+    "description": "Generic extract failure"
+  },
+  "errorNothingToSummarize": {
+    "message": "Nothing to summarize here yet - open a page, email, or video first.",
+    "description": "Empty content error"
+  },
+  "errorPdfNoText": {
+    "message": "Couldn't pull any text out of this PDF - it might be a scanned image.",
+    "description": "PDF empty error"
+  },
+  "errorUnexpected": {
+    "message": "An unexpected error occurred. Try summarizing again.",
+    "description": "Generic fallback error"
+  }
+}
