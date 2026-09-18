@@ -1165,45 +1165,8 @@ function notifyJobFailed(err) {
   });
 }
 
-const SUMMARIZE_CONTEXT_MENU_ID = "apogee-summarize";
-const SUMMARIZE_SELECTION_CONTEXT_MENU_ID = "apogee-summarize-selection";
-
-if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
-  chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-      id: SUMMARIZE_CONTEXT_MENU_ID,
-      title: "Summarize this page",
-      contexts: ["page"],
-    });
-    chrome.contextMenus.create({
-      id: SUMMARIZE_SELECTION_CONTEXT_MENU_ID,
-      title: "Summarize selection",
-      contexts: ["selection"],
-    });
-  });
-}
-
 // Narrow the bundled loopback Origin-strip to this extension's non-tab requests where session rules are supported; loopback clients await the same helper before fetching, so this is only a fast track. Never rejects.
 ensureLoopbackCorsRule().catch(() => {});
-
-if (
-  typeof chrome !== "undefined" &&
-  chrome.contextMenus?.onClicked?.addListener
-) {
-  chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (!tab) return;
-    if (info.menuItemId === SUMMARIZE_CONTEXT_MENU_ID) {
-      runBackgroundSummarize(tab, { notifyOnFinish: true }).catch((err) =>
-        notifyJobFailed(err),
-      );
-    } else if (info.menuItemId === SUMMARIZE_SELECTION_CONTEXT_MENU_ID) {
-      runBackgroundSummarize(tab, {
-        notifyOnFinish: true,
-        selectionText: info.selectionText,
-      }).catch((err) => notifyJobFailed(err));
-    }
-  });
-}
 
 if (typeof chrome !== "undefined" && chrome.commands?.onCommand?.addListener) {
   chrome.commands.onCommand.addListener(async (command) => {
@@ -2337,22 +2300,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+const SUMMARIZE_CONTEXT_MENU_ID = "apogee-summarize";
+const SUMMARIZE_SELECTION_CONTEXT_MENU_ID = "apogee-summarize-selection";
+const SUMMARIZE_TABS_CONTEXT_MENU_ID = "apogee-summarize-tabs";
+
 export function setupContextMenus() {
   if (typeof chrome === "undefined" || !chrome.contextMenus) return;
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: "apogee-summarize-tabs",
+      id: SUMMARIZE_CONTEXT_MENU_ID,
+      title: "Summarize this page",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: SUMMARIZE_SELECTION_CONTEXT_MENU_ID,
+      title: "Summarize selection",
+      contexts: ["selection"],
+    });
+    chrome.contextMenus.create({
+      id: SUMMARIZE_TABS_CONTEXT_MENU_ID,
       title: "Summarize with Apogee",
       contexts: ["page", "selection", "tab", "action"],
     });
   });
 }
 
-if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled) {
+if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
   chrome.runtime.onInstalled.addListener(() => {
     setupContextMenus();
   });
 }
+if (typeof chrome !== "undefined" && chrome.runtime?.onStartup?.addListener) {
+  chrome.runtime.onStartup.addListener(() => {
+    setupContextMenus();
+  });
+}
+// Service workers wake without onInstalled/onStartup firing, and the Firefox
+// background page reloads on browser restart, so register eagerly too.
+// removeAll makes this idempotent.
 setupContextMenus();
 
 export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
@@ -2653,9 +2638,23 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   return { summary: summaryResult, pageData };
 }
 
-if (typeof chrome !== "undefined" && chrome.contextMenus) {
+if (
+  typeof chrome !== "undefined" &&
+  chrome.contextMenus?.onClicked?.addListener
+) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === "apogee-summarize-tabs") {
+    if (info.menuItemId === SUMMARIZE_CONTEXT_MENU_ID) {
+      if (!tab) return;
+      runBackgroundSummarize(tab, { notifyOnFinish: true }).catch((err) =>
+        notifyJobFailed(err),
+      );
+    } else if (info.menuItemId === SUMMARIZE_SELECTION_CONTEXT_MENU_ID) {
+      if (!tab) return;
+      runBackgroundSummarize(tab, {
+        notifyOnFinish: true,
+        selectionText: info.selectionText,
+      }).catch((err) => notifyJobFailed(err));
+    } else if (info.menuItemId === SUMMARIZE_TABS_CONTEXT_MENU_ID) {
       let targetTabs = [tab];
       if (typeof chrome.tabs?.query === "function") {
         const highlighted = await chrome.tabs.query({
