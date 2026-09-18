@@ -9,10 +9,20 @@
 
   <body>
     <div class="container">
-      <div id="homeView" tabindex="-1" aria-label="Apogee home">
+      <div
+        id="homeView"
+        tabindex="-1"
+        aria-label="Apogee home"
+        data-i18n-aria-label="apogeeHome"
+      >
         <header class="header">
           <div class="brand">
-            <img src="../assets/logo.png" class="logo" alt="Apogee Logo" />
+            <img
+              src="../assets/logo.png"
+              class="logo"
+              alt="Apogee Logo"
+              data-i18n-alt="apogeeLogo"
+            />
             <span class="brand-name">apogee</span>
             <div id="homeExtractorChip" class="extractor-chip hidden">
               <span id="homeExtractorIcon" class="ico"></span>
@@ -26,7 +36,7 @@
             role="status"
             aria-live="polite"
           >
-            <span id="homeStatusText">Checking...</span>
+            <span id="homeStatusText" data-i18n="checking">Checking...</span>
             <span id="homeStatusDot" class="status-dot checking"></span>
           </div>
 
@@ -37,11 +47,18 @@
               type="button"
               aria-label="Toggle theme"
               title="Toggle theme"
+              data-i18n-aria-label="toggleTheme"
+              data-i18n-title="toggleTheme"
             >
               <span class="ico" data-ico="contrast" aria-hidden="true"></span>
             </button>
 
-            <button id="settingsBtn" class="icon-btn" aria-label="Settings">
+            <button
+              id="settingsBtn"
+              class="icon-btn"
+              aria-label="Settings"
+              data-i18n-aria-label="settings"
+            >
               <span class="ico" data-ico="sliders" aria-hidden="true"></span>
             </button>
 
@@ -51,6 +68,8 @@
               type="button"
               aria-label="Open in side panel"
               title="Open in side panel"
+              data-i18n-aria-label="openInSidePanel"
+              data-i18n-title="openInSidePanel"
             >
               <span
                 class="ico side-panel-icon"
@@ -75,44 +94,49 @@
           <div class="home-buttons">
             <button id="summarizeBtn" class="action-btn">
               <span class="ico" data-ico="sparkle" aria-hidden="true"></span>
-              <span>Summarize this page</span>
+              <span data-i18n="summarizeThisPage">Summarize this page</span>
               <span
                 id="summarizeShortcutHint"
                 class="shortcut-hint hidden"
               ></span>
             </button>
 
-            <div class="seg-row" role="radiogroup" aria-label="Response format">
+            <div
+              class="seg-row"
+              role="radiogroup"
+              aria-label="Response format"
+              data-i18n-aria-label="responseFormat"
+            >
               <label class="seg">
                 <input type="radio" name="format" value="bullets" checked />
-                <span>bullets</span>
+                <span data-i18n="formatBullets">bullets</span>
               </label>
 
               <label class="seg">
                 <input type="radio" name="format" value="sentences" />
-                <span>sentences</span>
+                <span data-i18n="formatSentences">sentences</span>
               </label>
 
               <label class="seg">
                 <input type="radio" name="format" value="paragraphs" />
-                <span>paragraphs</span>
+                <span data-i18n="formatParagraphs">paragraphs</span>
               </label>
             </div>
 
             <button id="askBtn" class="action-btn">
               <span class="ico" data-ico="chat" aria-hidden="true"></span>
-              <span>Ask Apogee a question</span>
+              <span data-i18n="askApogeeQuestion">Ask Apogee a question</span>
             </button>
 
             <div class="chip-row">
               <button id="pasteTextBtn" class="chip-btn" type="button">
                 <span class="ico" data-ico="copy" aria-hidden="true"></span>
-                <span>Paste text</span>
+                <span data-i18n="pasteText">Paste text</span>
               </button>
 
               <button id="uploadFileBtn" class="chip-btn" type="button">
                 <span class="ico" data-ico="upload" aria-hidden="true"></span>
-                <span>Upload file</span>
+                <span data-i18n="uploadFile">Upload file</span>
               </button>
 
               <button
@@ -121,9 +145,11 @@
                 type="button"
                 title="Click, then select text on the webpage"
                 aria-label="Click, then select text on the webpage"
+                data-i18n-title="selectTextHint"
+                data-i18n-aria-label="selectTextHint"
               >
                 <span class="ico" data-ico="inspect" aria-hidden="true"></span>
-                <span>Select text</span>
+                <span data-i18n="selectText">Select text</span>
               </button>
             </div>
 
@@ -138,13 +164,18 @@
           <div id="webgpuWarning" class="webgpu-warning hidden">
             <span class="warning-icon">⚠️</span>
             <span
-              >WebGPU is not supported in this browser. Use
-              <strong>Local Ollama</strong> mode in Settings, or switch to
-              Chrome/Edge.
+              ><span data-i18n="webgpuUnsupportedLead"
+                >WebGPU is not supported in this browser. Use</span
+              >
+              <strong data-i18n="webgpuLocalOllama">Local Ollama</strong>
+              <span data-i18n="webgpuUnsupportedTail"
+                >mode in Settings, or switch to Chrome/Edge.</span
+              >
               <a
                 href="https://github.com/darshi1337/apogee/blob/main/ERROR.md#in-browser-models"
                 target="_blank"
                 rel="noopener noreferrer"
+                data-i18n="webgpuWhatMeans"
                 >What does this mean?</a
               ></span
             >
@@ -154,7 +185,9 @@
             <div class="section-header">
               <div class="section-title-group">
                 <span class="ico" data-ico="clock" aria-hidden="true"></span>
-                <h3 class="section-title">Past Summaries</h3>
+                <h3 class="section-title" data-i18n="pastSummaries">
+                  Past Summaries
+                </h3>
               </div>
             </div>
 
@@ -164,6 +197,8 @@
               class="past-summaries-filter"
               placeholder="Filter by title…"
               aria-label="Filter past summaries by title"
+              data-i18n-placeholder="filterByTitle"
+              data-i18n-aria-label="filterPastByTitle"
             />
 
             <div id="pastSummariesList"></div>
@@ -171,10 +206,21 @@
         </div>
       </div>
 
-      <div id="summaryView" class="hidden" tabindex="-1" aria-label="Summary">
+      <div
+        id="summaryView"
+        class="hidden"
+        tabindex="-1"
+        aria-label="Summary"
+        data-i18n-aria-label="summaryView"
+      >
         <header class="header">
           <div class="brand">
-            <img src="../assets/logo.png" class="logo" alt="Apogee Logo" />
+            <img
+              src="../assets/logo.png"
+              class="logo"
+              alt="Apogee Logo"
+              data-i18n-alt="apogeeLogo"
+            />
             <span class="brand-name">apogee</span>
             <div id="summaryExtractorChip" class="extractor-chip hidden">
               <span id="summaryExtractorIcon" class="ico"></span>
@@ -188,7 +234,7 @@
             role="status"
             aria-live="polite"
           >
-            <span id="summaryStatusText">Checking...</span>
+            <span id="summaryStatusText" data-i18n="checking">Checking...</span>
             <span id="summaryStatusDot" class="status-dot checking"></span>
           </div>
 
@@ -198,11 +244,18 @@
               type="button"
               aria-label="Toggle theme"
               title="Toggle theme"
+              data-i18n-aria-label="toggleTheme"
+              data-i18n-title="toggleTheme"
             >
               <span class="ico" data-ico="contrast" aria-hidden="true"></span>
             </button>
 
-            <button id="settingsBtn2" class="icon-btn" aria-label="Settings">
+            <button
+              id="settingsBtn2"
+              class="icon-btn"
+              aria-label="Settings"
+              data-i18n-aria-label="settings"
+            >
               <span class="ico" data-ico="sliders" aria-hidden="true"></span>
             </button>
 
@@ -212,6 +265,8 @@
               type="button"
               aria-label="Open in side panel"
               title="Open in side panel"
+              data-i18n-aria-label="openInSidePanel"
+              data-i18n-title="openInSidePanel"
             >
               <span
                 class="ico side-panel-icon"
@@ -240,7 +295,10 @@
                 data-ico="download"
                 aria-hidden="true"
               ></span>
-              <span id="modelProgressText" class="model-progress-title"
+              <span
+                id="modelProgressText"
+                class="model-progress-title"
+                data-i18n="downloadingModel"
                 >Downloading model...</span
               >
               <span
@@ -255,6 +313,7 @@
               aria-valuemin="0"
               aria-valuemax="100"
               aria-label="Model download progress"
+              data-i18n-aria-label="modelDownloadProgress"
             >
               <div id="modelProgressFill" class="model-progress-fill"></div>
             </div>
@@ -267,34 +326,43 @@
                 aria-controls="debugLogsCard"
               >
                 <span class="ico" data-ico="lines" aria-hidden="true"></span>
-                <span class="logs-toggle-label">Show logs</span>
+                <span class="logs-toggle-label" data-i18n="showLogs"
+                  >Show logs</span
+                >
               </button>
             </div>
           </div>
 
           <div id="debugLogsCard" class="debug-logs-card hidden">
             <div class="debug-logs-header">
-              <span class="debug-logs-title">Offscreen Logs</span>
+              <span class="debug-logs-title" data-i18n="offscreenLogs"
+                >Offscreen Logs</span
+              >
               <button
                 type="button"
                 id="clearDebugLogsBtn"
                 class="debug-logs-clear"
+                data-i18n="clear"
               >
                 Clear
               </button>
             </div>
-            <p class="debug-logs-warning">
+            <p class="debug-logs-warning" data-i18n="logsPrivacyWarning">
               ⚠️ These logs may contain details about the page you were viewing.
               Review before pasting into a public issue.
             </p>
-            <div id="debugLogsContent" class="debug-logs-content">
+            <div
+              id="debugLogsContent"
+              class="debug-logs-content"
+              data-i18n="noLogsYet"
+            >
               No logs recorded. Try starting summary or chat.
             </div>
           </div>
 
           <section id="summaryCard" class="summary-card">
             <div class="card-header-row">
-              <h2>Summarize this page</h2>
+              <h2 data-i18n="summarizeThisPageHeading">Summarize this page</h2>
 
               <div class="card-header-actions">
                 <button
@@ -302,6 +370,8 @@
                   class="copy-btn hidden"
                   aria-label="Copy as Markdown"
                   title="Copy as Markdown"
+                  data-i18n-aria-label="copyAsMarkdown"
+                  data-i18n-title="copyAsMarkdown"
                 >
                   <span
                     class="ico"
@@ -315,6 +385,8 @@
                   class="copy-btn hidden"
                   aria-label="Export as JSON"
                   title="Export as JSON"
+                  data-i18n-aria-label="exportAsJson"
+                  data-i18n-title="exportAsJson"
                 >
                   <span
                     class="ico"
@@ -325,11 +397,17 @@
               </div>
             </div>
 
-            <div id="summaryText">Summary will appear here.</div>
+            <div id="summaryText" data-i18n="summaryPlaceholder">
+              Summary will appear here.
+            </div>
 
             <div id="resummarizeHint" class="resummarize-hint hidden">
               <span id="resummarizeHintText"></span>
-              <button id="resummarizeHintBtn" type="button">
+              <button
+                id="resummarizeHintBtn"
+                type="button"
+                data-i18n="resummarize"
+              >
                 Re-summarize
               </button>
             </div>
@@ -352,16 +430,22 @@
                   class="resummarize-btn hidden"
                   aria-label="Resummarize this page"
                   title="Resummarize this page"
+                  data-i18n-aria-label="resummarizeThisPage"
+                  data-i18n-title="resummarizeThisPage"
                 >
                   <span
                     class="ico"
                     data-ico="refresh"
                     aria-hidden="true"
                   ></span>
-                  <span>Resummarize</span>
+                  <span data-i18n="resummarizeThisPage">Resummarize</span>
                 </button>
 
-                <button id="cancelSummarizeBtn" class="cancel-btn hidden">
+                <button
+                  id="cancelSummarizeBtn"
+                  class="cancel-btn hidden"
+                  data-i18n="cancel"
+                >
                   Cancel
                 </button>
               </div>
@@ -370,7 +454,11 @@
 
           <section id="promptsSection" class="prompts">
             <div class="section-header">
-              <h3 id="questionHeading" class="section-title">
+              <h3
+                id="questionHeading"
+                class="section-title"
+                data-i18n="suggestedPrompts"
+              >
                 Suggested Prompts
               </h3>
 
@@ -378,6 +466,7 @@
                 id="promptsCloseBtn"
                 class="prompts-toggle"
                 aria-label="Hide prompts"
+                data-i18n-aria-label="hidePrompts"
               >
                 <span class="ico" data-ico="close" aria-hidden="true"></span>
               </button>
@@ -388,13 +477,14 @@
 
           <section class="chat-section">
             <div class="chat-header">
-              <h3 id="answerHeading">Ask Apogee</h3>
+              <h3 id="answerHeading" data-i18n="askApogee">Ask Apogee</h3>
 
               <div class="chat-header-actions">
                 <button
                   id="copyAnswerBtn"
                   class="copy-btn hidden"
                   aria-label="Copy answer"
+                  data-i18n-aria-label="copyAnswer"
                 >
                   <span class="ico" data-ico="copy" aria-hidden="true"></span>
                 </button>
@@ -404,7 +494,7 @@
                   id="togglePromptsBtn"
                   aria-expanded="false"
                 >
-                  Question
+                  <span data-i18n="questionTag">Question</span>
 
                   <span
                     class="ico"
@@ -420,9 +510,16 @@
                 id="questionInput"
                 placeholder="Type here to ask · Enter to send"
                 aria-label="Ask a question about this page"
+                data-i18n-placeholder="askPlaceholder"
+                data-i18n-aria-label="askAboutPage"
               ></textarea>
 
-              <button id="sendBtn" class="send-btn" aria-label="Send">
+              <button
+                id="sendBtn"
+                class="send-btn"
+                aria-label="Send"
+                data-i18n-aria-label="send"
+              >
                 <span class="ico" data-ico="send" aria-hidden="true"></span>
               </button>
 
@@ -433,7 +530,11 @@
                   id="tokensPerSecBadgeAsk"
                   class="tokens-per-sec-badge hidden"
                 ></span>
-                <button id="cancelAskBtn" class="cancel-btn hidden">
+                <button
+                  id="cancelAskBtn"
+                  class="cancel-btn hidden"
+                  data-i18n="cancel"
+                >
                   Cancel
                 </button>
               </div>
@@ -442,17 +543,24 @@
         </div>
       </div>
 
-      <div id="settingsView" class="hidden" tabindex="-1" aria-label="Settings">
+      <div
+        id="settingsView"
+        class="hidden"
+        tabindex="-1"
+        aria-label="Settings"
+        data-i18n-aria-label="settings"
+      >
         <header class="header">
           <div class="header-left">
             <button
               id="settingsBackBtn"
               class="icon-btn back-btn"
               aria-label="Back"
+              data-i18n-aria-label="back"
             >
               <span class="ico" data-ico="arrow" aria-hidden="true"></span>
             </button>
-            <h1 class="header-title">Settings</h1>
+            <h1 class="header-title" data-i18n="settingsTitle">Settings</h1>
           </div>
 
           <div class="header-actions">
@@ -462,6 +570,8 @@
               type="button"
               aria-label="Open in side panel"
               title="Open in side panel"
+              data-i18n-aria-label="openInSidePanel"
+              data-i18n-title="openInSidePanel"
             >
               <span
                 class="ico side-panel-icon"
@@ -481,11 +591,13 @@
           <div class="settings-card status-card">
             <div class="card-title">
               <span class="ico" data-ico="activity" aria-hidden="true"></span>
-              <span>Status</span>
+              <span data-i18n="status">Status</span>
             </div>
 
             <div class="status-row">
-              <span id="settingsStatusText"> Checking... </span>
+              <span id="settingsStatusText" data-i18n="checking">
+                Checking...
+              </span>
 
               <span id="settingsStatusDot" class="status-dot checking"></span>
             </div>
@@ -494,13 +606,13 @@
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="plug" aria-hidden="true"></span>
-              <span>AI Provider</span>
+              <span data-i18n="aiProvider">AI Provider</span>
             </div>
 
             <label class="radio-option" id="webllmProviderOption">
               <input type="radio" name="provider" value="webllm" checked />
               <span
-                >In-Browser AI (GPU)
+                ><span data-i18n="providerWebllm">In-Browser AI (GPU)</span>
                 <small class="provider-badge">WebGPU</small></span
               >
             </label>
@@ -508,7 +620,9 @@
             <label class="radio-option">
               <input type="radio" name="provider" value="transformers" />
               <span
-                >In-Browser AI (CPU)
+                ><span data-i18n="providerTransformers"
+                  >In-Browser AI (CPU)</span
+                >
                 <small class="provider-badge">Transformers.js</small></span
               >
             </label>
@@ -516,14 +630,15 @@
             <label class="radio-option">
               <input type="radio" name="provider" value="local" />
               <span
-                >Local Ollama <small class="provider-badge">ollama</small></span
+                ><span data-i18n="providerOllama">Local Ollama</span>
+                <small class="provider-badge">ollama</small></span
               >
             </label>
 
             <label class="radio-option">
               <input type="radio" name="provider" value="llamacpp" />
               <span
-                >Local LLaMA.cpp
+                ><span data-i18n="providerLlamacpp">Local LLaMA.cpp</span>
                 <small class="provider-badge">llama-server</small></span
               >
             </label>
@@ -532,7 +647,7 @@
           <div id="webllmModelsCard" class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="chip" aria-hidden="true"></span>
-              <span>In-Browser Model</span>
+              <span data-i18n="inBrowserModel">In-Browser Model</span>
             </div>
 
             <div id="webllmModelList"></div>
@@ -541,7 +656,7 @@
           <div id="transformersModelsCard" class="settings-card hidden">
             <div class="card-title">
               <span class="ico" data-ico="chip" aria-hidden="true"></span>
-              <span>In-Browser Model</span>
+              <span data-i18n="inBrowserModel">In-Browser Model</span>
             </div>
 
             <div id="transformersModelList"></div>
@@ -550,11 +665,11 @@
           <div id="localSettingsCard" class="settings-card hidden">
             <div class="card-title">
               <span class="ico" data-ico="server" aria-hidden="true"></span>
-              <span>Ollama</span>
+              <span data-i18n="ollamaCard">Ollama</span>
             </div>
 
             <label class="settings-field">
-              <span>Ollama URL</span>
+              <span data-i18n="ollamaUrl">Ollama URL</span>
               <input
                 id="backendUrlInput"
                 type="url"
@@ -566,7 +681,7 @@
           <div id="localModelsCard" class="settings-card hidden">
             <div class="card-title">
               <span class="ico" data-ico="robot" aria-hidden="true"></span>
-              <span>Local LLM</span>
+              <span data-i18n="localLlm">Local LLM</span>
             </div>
 
             <div id="localModelList"></div>
@@ -576,11 +691,11 @@
           <div id="llamaSettingsCard" class="settings-card hidden">
             <div class="card-title">
               <span class="ico" data-ico="server" aria-hidden="true"></span>
-              <span>Local LLaMA.cpp</span>
+              <span data-i18n="llamacppCard">Local LLaMA.cpp</span>
             </div>
 
             <label class="settings-field">
-              <span>Local LLaMA.cpp URL</span>
+              <span data-i18n="llamacppUrl">Local LLaMA.cpp URL</span>
               <input
                 id="llamaHostInput"
                 type="url"
@@ -590,13 +705,17 @@
 
             <label class="settings-field">
               <span
-                >API key <small>(only if started with --api-key)</small></span
+                ><span data-i18n="apiKey">API key</span>
+                <small data-i18n="apiKeyHint"
+                  >(only if started with --api-key)</small
+                ></span
               >
               <input
                 id="llamaApiKeyInput"
                 type="password"
                 autocomplete="off"
                 placeholder="Leave empty for most servers"
+                data-i18n-placeholder="apiKeyPlaceholder"
               />
             </label>
           </div>
@@ -604,16 +723,17 @@
           <div id="llamaModelsCard" class="settings-card hidden">
             <div class="card-title">
               <span class="ico" data-ico="robot" aria-hidden="true"></span>
-              <span>Local LLM</span>
+              <span data-i18n="localLlm">Local LLM</span>
             </div>
 
             <label class="settings-field">
-              <span>Model name</span>
+              <span data-i18n="modelName">Model name</span>
               <input
                 id="llamaModelInput"
                 type="text"
                 autocomplete="off"
                 placeholder="Detected from the server"
+                data-i18n-placeholder="modelNamePlaceholder"
               />
             </label>
             <div id="llamaModelStatus" class="clear-data-status"></div>
@@ -622,7 +742,7 @@
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="globe" aria-hidden="true"></span>
-              <span>Summary Language</span>
+              <span data-i18n="summaryLanguage">Summary Language</span>
             </div>
             <select id="summaryLanguageSelect" class="settings-select"></select>
           </div>
@@ -630,7 +750,7 @@
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="translate" aria-hidden="true"></span>
-              <span>Translation Engine</span>
+              <span data-i18n="translationEngine">Translation Engine</span>
             </div>
             <label class="radio-option">
               <input
@@ -639,43 +759,45 @@
                 value="opus"
                 checked
               />
-              <span>Dedicated translator (Opus-MT, downloads)</span>
+              <span data-i18n="translatorOpus"
+                >Dedicated translator (Opus-MT, downloads)</span
+              >
             </label>
 
             <label class="radio-option">
               <input type="radio" name="translationEngine" value="llm" />
-              <span>Summarization model</span>
+              <span data-i18n="translatorLlm">Summarization model</span>
             </label>
           </div>
 
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="contrast" aria-hidden="true"></span>
-              <span>Appearance Theme</span>
+              <span data-i18n="appearanceTheme">Appearance Theme</span>
             </div>
 
             <label class="radio-option">
               <input type="radio" name="theme" value="dark" checked />
-              <span>Dark Theme</span>
+              <span data-i18n="themeDark">Dark Theme</span>
             </label>
 
             <label class="radio-option">
               <input type="radio" name="theme" value="light" />
-              <span>Light Theme</span>
+              <span data-i18n="themeLight">Light Theme</span>
             </label>
 
             <label class="radio-option">
               <input type="radio" name="theme" value="system" />
-              <span>System Preference</span>
+              <span data-i18n="themeSystem">System Preference</span>
             </label>
           </div>
 
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="pencil" aria-hidden="true"></span>
-              <span>Custom Instructions</span>
+              <span data-i18n="customInstructions">Custom Instructions</span>
             </div>
-            <p class="settings-hint">
+            <p class="settings-hint" data-i18n="customInstructionsHint">
               Extra instructions added to every summary and answer, on top of
               Apogee's built-in prompt, e.g. "Explain like I'm five", "Focus on
               the technical details", or "Answer in a formal tone". Leave blank
@@ -687,6 +809,7 @@
               rows="4"
               maxlength="2000"
               placeholder="e.g. Keep it concise and highlight any action items."
+              data-i18n-placeholder="customInstructionsPlaceholder"
             ></textarea>
             <div class="settings-textarea-meta">
               <span id="customInstructionsCount" class="char-count"
@@ -698,34 +821,42 @@
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="skip" aria-hidden="true"></span>
-              <span>SponsorBlock</span>
+              <span data-i18n="sponsorBlock">SponsorBlock</span>
             </div>
 
             <label class="radio-option">
               <input type="radio" name="useSponsorBlock" value="on" checked />
-              <span>Use SponsorBlock to skip sponsor segments</span>
+              <span data-i18n="sponsorBlockOn"
+                >Use SponsorBlock to skip sponsor segments</span
+              >
             </label>
 
             <label class="radio-option">
               <input type="radio" name="useSponsorBlock" value="off" />
-              <span>Stay fully local (don't contact SponsorBlock)</span>
+              <span data-i18n="sponsorBlockOff"
+                >Stay fully local (don't contact SponsorBlock)</span
+              >
             </label>
           </div>
 
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="shield" aria-hidden="true"></span>
-              <span>Privacy</span>
+              <span data-i18n="privacy">Privacy</span>
             </div>
 
             <label class="radio-option">
               <input type="radio" name="saveHistory" value="on" checked />
-              <span>Save summaries &amp; history locally</span>
+              <span data-i18n="saveHistoryOn"
+                >Save summaries &amp; history locally</span
+              >
             </label>
 
             <label class="radio-option">
               <input type="radio" name="saveHistory" value="off" />
-              <span>Don't save, and delete what's already saved</span>
+              <span data-i18n="saveHistoryOff"
+                >Don't save, and delete what's already saved</span
+              >
             </label>
 
             <div id="historyWipeConfirm" class="history-wipe hidden">
@@ -735,6 +866,7 @@
                   id="historyWipeCancelBtn"
                   type="button"
                   class="history-wipe-btn"
+                  data-i18n="cancel"
                 >
                   Cancel
                 </button>
@@ -742,13 +874,14 @@
                   id="historyWipeDeleteBtn"
                   type="button"
                   class="history-wipe-btn danger"
+                  data-i18n="historyDeleteAndOff"
                 >
                   Delete and turn off
                 </button>
               </div>
             </div>
 
-            <p class="settings-hint">
+            <p class="settings-hint" data-i18n="privateHostsHint">
               Pages on known webmail and chat hosts are never saved. Add any
               other host that should be treated the same way, one per line, e.g.
               your own mail server or a patient portal. A host also covers its
@@ -760,6 +893,7 @@
               rows="3"
               maxlength="1000"
               placeholder="mail.example.com&#10;portal.myclinic.org"
+              data-i18n-placeholder="privateHostsPlaceholder"
             ></textarea>
             <div class="settings-textarea-meta">
               <span id="privateHostsCount" class="char-count">0 / 1000</span>
@@ -767,7 +901,9 @@
 
             <button id="clearDataBtn" class="clear-data-btn">
               <span class="ico" data-ico="trash" aria-hidden="true"></span>
-              <span>Clear cached summaries &amp; page data</span>
+              <span data-i18n="clearCached"
+                >Clear cached summaries &amp; page data</span
+              >
             </button>
             <div id="clearDataStatus" class="clear-data-status"></div>
           </div>
@@ -775,24 +911,32 @@
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="activity" aria-hidden="true"></span>
-              <span>Activity &amp; Privacy Audit</span>
+              <span data-i18n="activityAudit"
+                >Activity &amp; Privacy Audit</span
+              >
             </div>
 
             <div class="audit-summary-box">
               <div class="audit-row">
-                <span class="audit-label">Network Egress:</span>
+                <span class="audit-label" data-i18n="networkEgress"
+                  >Network Egress:</span
+                >
                 <span id="auditNetworkStatus" class="audit-badge success"
                   >Checking...</span
                 >
               </div>
               <div class="audit-row">
-                <span class="audit-label">Page Access History:</span>
+                <span class="audit-label" data-i18n="pageAccessHistory"
+                  >Page Access History:</span
+                >
                 <span id="auditAccessCount" class="audit-val"
                   >0 pages processed</span
                 >
               </div>
               <div class="audit-row">
-                <span class="audit-label">Storage Retention:</span>
+                <span class="audit-label" data-i18n="storageRetention"
+                  >Storage Retention:</span
+                >
                 <span id="auditStorageRetention" class="audit-val"
                   >Cached items: 0</span
                 >
@@ -800,9 +944,13 @@
             </div>
 
             <div class="audit-details">
-              <h4 class="audit-subheading">Recent Page Access Log</h4>
+              <h4 class="audit-subheading" data-i18n="recentAccessLog">
+                Recent Page Access Log
+              </h4>
               <div id="auditLogList" class="audit-log-list">
-                <p class="audit-empty">No page access recorded yet.</p>
+                <p class="audit-empty" data-i18n="noAccessYet">
+                  No page access recorded yet.
+                </p>
               </div>
             </div>
           </div>
@@ -810,10 +958,10 @@
           <div class="settings-card">
             <div class="card-title">
               <span class="ico" data-ico="inspect" aria-hidden="true"></span>
-              <span>Diagnostics</span>
+              <span data-i18n="diagnostics">Diagnostics</span>
             </div>
 
-            <p class="settings-hint">
+            <p class="settings-hint" data-i18n="diagnosticsHint">
               Records what the AI engine is doing as it loads and generates. Off
               by default; turn it on before reproducing a bug, then attach the
               log panel's output (it appears with the model progress bar while a
@@ -822,24 +970,26 @@
 
             <label class="radio-option">
               <input type="radio" name="debugLogs" value="off" checked />
-              <span>Don't record engine logs</span>
+              <span data-i18n="diagnosticsOff">Don't record engine logs</span>
             </label>
 
             <label class="radio-option">
               <input type="radio" name="debugLogs" value="on" />
-              <span>Record engine logs</span>
+              <span data-i18n="diagnosticsOn">Record engine logs</span>
             </label>
 
             <button
               type="button"
               id="copyDiagnosticsBtn"
               class="copy-diagnostics-btn hidden"
+              data-i18n="copyDiagnostics"
             >
               Copy diagnostics as Markdown
             </button>
             <p
               id="copyDiagnosticsHint"
               class="settings-hint copy-diagnostics-hint"
+              data-i18n="copyDiagnosticsHint"
             >
               Custom instructions and a non-loopback Ollama host are reported as
               a shape only, never their contents.
@@ -851,7 +1001,7 @@
           <button id="getInTouchBtn" class="settings-contact-btn">
             <div class="settings-contact-left">
               <span class="ico" data-ico="mail" aria-hidden="true"></span>
-              <span>Get in touch</span>
+              <span data-i18n="getInTouch">Get in touch</span>
             </div>
 
             <span
@@ -868,6 +1018,7 @@
         class="hidden"
         tabindex="-1"
         aria-label="Get in touch"
+        data-i18n-aria-label="getInTouch"
       >
         <header class="header">
           <div class="header-left">
@@ -875,10 +1026,11 @@
               id="contactBackBtn"
               class="icon-btn back-btn"
               aria-label="Back"
+              data-i18n-aria-label="back"
             >
               <span class="ico" data-ico="arrow" aria-hidden="true"></span>
             </button>
-            <h1 class="header-title">Get in touch</h1>
+            <h1 class="header-title" data-i18n="getInTouch">Get in touch</h1>
           </div>
 
           <div class="header-actions">
@@ -888,6 +1040,8 @@
               type="button"
               aria-label="Open in side panel"
               title="Open in side panel"
+              data-i18n-aria-label="openInSidePanel"
+              data-i18n-title="openInSidePanel"
             >
               <span
                 class="ico side-panel-icon"
@@ -908,7 +1062,7 @@
             <button id="contributeBtn" class="contact-card">
               <div class="contact-card-left">
                 <span class="ico" data-ico="github" aria-hidden="true"></span>
-                <span>Contribute</span>
+                <span data-i18n="contribute">Contribute</span>
               </div>
 
               <span
@@ -921,7 +1075,7 @@
             <button id="bugBtn" class="contact-card">
               <div class="contact-card-left">
                 <span class="ico" data-ico="bug" aria-hidden="true"></span>
-                <span>Report a bug</span>
+                <span data-i18n="reportBug">Report a bug</span>
               </div>
 
               <span
@@ -934,7 +1088,7 @@
             <button id="featureBtn" class="contact-card">
               <div class="contact-card-left">
                 <span class="ico" data-ico="bulb" aria-hidden="true"></span>
-                <span>Request a feature</span>
+                <span data-i18n="requestFeature">Request a feature</span>
               </div>
 
               <span
@@ -949,14 +1103,15 @@
             <div class="version" id="versionText"></div>
 
             <div class="made-with">
-              <span>Made with</span>
+              <span data-i18n="madeWith">Made with</span>
               <span class="ico" data-ico="heart" aria-hidden="true"></span>
-              <span>by darshi1337 and</span>
+              <span data-i18n="madeWithBy">by darshi1337 and</span>
               <a
                 class="made-with-link"
                 href="https://github.com/darshi1337/apogee/graphs/contributors"
                 target="_blank"
                 rel="noopener noreferrer"
+                data-i18n="contributors"
                 >contributors</a
               >
             </div>
@@ -973,18 +1128,29 @@
       aria-labelledby="pasteDialogTitle"
     >
       <form id="pasteDialogForm" class="input-dialog">
-        <h2 id="pasteDialogTitle">Paste text to summarize</h2>
-        <label for="pasteDialogInput">Add text below</label>
+        <h2 id="pasteDialogTitle" data-i18n="pasteDialogTitle">
+          Paste text to summarize
+        </h2>
+        <label for="pasteDialogInput" data-i18n="pasteDialogLabel"
+          >Add text below</label
+        >
         <textarea id="pasteDialogInput" rows="7"></textarea>
         <div class="input-dialog-actions">
           <button
             id="pasteDialogCancel"
             class="dialog-cancel-btn"
             type="button"
+            data-i18n="cancel"
           >
             Cancel
           </button>
-          <button class="dialog-submit-btn" type="submit">Summarize</button>
+          <button
+            class="dialog-submit-btn"
+            type="submit"
+            data-i18n="summarizeVerb"
+          >
+            Summarize
+          </button>
         </div>
       </form>
     </div>
