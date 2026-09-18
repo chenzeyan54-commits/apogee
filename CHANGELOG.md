@@ -139,6 +139,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Remove dead plaintext export, getURL fallbacks, PUA link token ([9da732e](https://github.com/darshi1337/apogee/commit/9da732e128b00addfd1b5f73a5f2d93ee0a99f70))
 - Drop dead highlight overlay, rename dev script, add coverage flag ([e2953e5](https://github.com/darshi1337/apogee/commit/e2953e5ec99c9dea86a986317e72ada417e855dd))
 - Remove unused gmail brand icon ([84b6b1c](https://github.com/darshi1337/apogee/commit/84b6b1cf22b3f1add33f7a9abece6072ae9cd39d))
+- Add timeout auto-teardown and re-entry cleanup for selection capture ([8906cfe](https://github.com/darshi1337/apogee/commit/8906cfe5d767e8c6099f85cbf35cde8c5fcd1e7b))
+- Format selection test with prettier ([95fe713](https://github.com/darshi1337/apogee/commit/95fe713ecf163fbb5cf9d5c436a74f08ff69dd29))
+- Cover happy-path capture and bound re-entry timer ([820b794](https://github.com/darshi1337/apogee/commit/820b7941903e218de3ef7579b0a4b96388cf4918))
 
 ### Security
 
