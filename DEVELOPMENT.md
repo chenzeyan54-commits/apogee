@@ -32,12 +32,12 @@ This guide explains the Apogee codebase layout and repo folder structure. It cov
 
 ## Development and Build Commands
 
-Run `install:extension`, `build`, `test`, `lint`, `format`, `dev`, and `package` from the repo root or inside the `apogee-extension` directory. The rest (`format:check`, `build:chrome`, `build:firefox`, `start:firefox`, `start:chrome`, `lint:webext`) live only inside `apogee-extension/`.
+Run `install:extension`, `build`, `test`, `lint`, `format`, `build:watch`, and `package` from the repo root or inside the `apogee-extension` directory. The rest (`format:check`, `build:chrome`, `build:firefox`, `start:firefox`, `start:chrome`, `lint:webext`) live only inside `apogee-extension/`.
 
 - **Watch Mode (Development)**:
 
   ```bash
-  npm run dev
+  npm run build:watch
   ```
 
   Rebuilds both `dist/chrome` and `dist/firefox` output folders on their own whenever source files change.
@@ -138,7 +138,7 @@ The `lib/` folder holds plain JavaScript logic split into clean functional folde
 
 ### 6. `rules/` (Declarative Net Request Security Rules)
 
-- **What it holds**: `ollama-cors.json` holds the bundled fallback declarative net request rule. It strips origin headers from local loopback requests to `127.0.0.1` and `localhost`. Where session-scoped rules exist, the service worker sets a narrower match at runtime for non-tab requests only. See `lib/util/loopbackCors.js`.
+- **What it holds**: `ollama-cors.json` holds the bundled fallback declarative net request rule. It strips origin headers from local loopback requests to `127.0.0.1`, `localhost`, and `[::1]`. Where session-scoped rules exist, the service worker sets a narrower match at runtime for non-tab requests only. See `lib/util/loopbackCors.js`.
 
 - **How to contribute**: Add or adjust declarative net request header rules to keep zero CORS friction for local loopback services.
 

@@ -29,20 +29,6 @@ export function formatSummaryAsMarkdown({
   parts.push(summary || "");
   return parts.join("\n\n").trim() + "\n";
 }
-export function formatSummaryAsPlainText({ title, url, summary }) {
-  const plainSummary = (summary || "")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/[*_~`]/g, "");
-
-  const parts = [title || "Summary"];
-  if (url) parts.push(`Source: ${url}`);
-  parts.push(plainSummary);
-
-  return parts.join("\n\n").trim() + "\n";
-}
-
 export function formatSummaryAsJSON({
   title,
   url,

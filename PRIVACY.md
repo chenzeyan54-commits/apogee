@@ -50,7 +50,7 @@ Apogee makes only a small set of outbound network requests:
 
 - **Enforced Connection Allow-List**: No other outside calls exist. The `connect-src` in `apogee-extension/manifest.json` is the exact allow-list enforced against extension pages (popup, background, offscreen). Content-script fetches (YouTube transcripts and the Reddit same-origin thread JSON above) run in the context of the page itself instead. The extractor host allow-list plus `optional_host_permissions` and `activeTab` bind them, as stated per item.
 
-  The single shared loopback validator `validateLoopbackUrl` in `apogee-extension/lib/util/ollamaHost.js` serves the settings UI, the service worker, and the diagnostics display. It limits local links to loopback hosts only (`http://127.0.0.1` or `http://localhost`, IPv6 loopback rejected). It checks ports strictly (default port 11434 for Ollama, 8080 for llama.cpp).
+  The single shared loopback validator `validateLoopbackUrl` in `apogee-extension/lib/util/ollamaHost.js` serves the settings UI, the service worker, and the diagnostics display. It limits local links to loopback hosts only (`http://127.0.0.1`, `http://localhost`, or the IPv6 loopback `http://[::1]`). It checks ports strictly (default port 11434 for Ollama, 8080 for llama.cpp).
 
 ## Executable Code and WASM Runtime Security
 
@@ -68,11 +68,11 @@ The popup parses DOCX files picked or dropped into it locally from their ZIP/XML
 
 ## Local Ollama Connection Architecture
 
-To reach Ollama, Apogee strips the `Origin` header from loopback requests. It targets `localhost` and `127.0.0.1` with a `declarativeNetRequest` rule. The rule stays scoped to those loopback hosts. Ollama then accepts them with no `OLLAMA_ORIGINS` env var setup. Where the browser supports session-scoped rules, the rule applies at runtime to requests from no tab at all.
+To reach Ollama, Apogee strips the `Origin` header from loopback requests. It targets `localhost`, `127.0.0.1`, and the IPv6 loopback `[::1]` with a `declarativeNetRequest` rule. The rule stays scoped to those loopback hosts. Ollama then accepts them with no `OLLAMA_ORIGINS` env var setup. Where the browser supports session-scoped rules, the rule applies at runtime to requests from no tab at all.
 
   Those are the background fetches of the extension itself. A page you have open from a local dev server keeps its `Origin` header. The CSRF guards of your other local services stay intact. The bundled static rule stays as a fallback for runtimes without session-rule support.
 
-  It also leaves out `localhost` and `127.0.0.1` as initiators. This is a local on-device request path, not a data path to any third party. Ollama itself binds to `127.0.0.1` by default. No host on your network reaches it.
+  It also leaves out `localhost`, `127.0.0.1`, and `[::1]` as initiators. This is a local on-device request path, not a data path to any third party. Ollama itself binds to `127.0.0.1` by default. No host on your network reaches it.
 
 ## Telemetry and Analytics Policy
 
@@ -128,11 +128,11 @@ Apogee asks for a tight set of browser permissions to enforce security sandboxes
 
 - **`declarativeNetRequestWithHostAccess`**: It backs the rule that strips the `Origin` header from loopback Ollama requests. Where session-scoped rules exist, the rule applies at runtime to requests from no tab. Those are the background fetches of the extension itself.
 
-  Site pages keep their `Origin` headers. The bundled static rule stays as a fallback, scoped to `127.0.0.1` and `localhost` with loopback initiators left out. It rewrites headers only on hosts the extension already reaches.
+  Site pages keep their `Origin` headers. The bundled static rule stays as a fallback, scoped to the loopback hosts (`127.0.0.1`, `localhost`, `[::1]`) with loopback initiators left out. It rewrites headers only on hosts the extension already reaches.
 
-- **Host & Optional Host Permissions**: Apogee holds standing host access only to local loopback hosts (`http://127.0.0.1` and `http://localhost`) for your local Ollama instance. Site-specific cross-origin domains (such as `*.bilibili.com`, `*.hdslb.com`, `*.youtube.com`, `*.googlevideo.com`, `*.bsky.app` (which covers the `public.api.bsky.app` thread endpoint), and `sponsor.ajay.app`) need listing. They stay listed as `optional_host_permissions` in `manifest.json`. Apogee checks or asks for them on demand when features needing those surfaces run. Where the browser has no permissions API, these gates stay denied instead of failing open.
+- **Host & Optional Host Permissions**: Apogee holds standing host access only to local loopback hosts (`http://127.0.0.1/*`, `http://localhost/*`, and `http://[::1]/*`) for your local Ollama instance. Site-specific cross-origin domains (such as `*.bilibili.com`, `*.hdslb.com`, `*.youtube.com`, `*.googlevideo.com`, `*.bsky.app` (which covers the `public.api.bsky.app` thread endpoint), and `sponsor.ajay.app`) need listing. They stay listed as `optional_host_permissions` in `manifest.json`. Apogee checks or asks for them on demand when features needing those surfaces run. Where the browser has no permissions API, these gates stay denied instead of failing open.
 
-  Apogee reaches each other site strictly on demand through `activeTab` when you click Summarize or Ask. There is zero `<all_urls>` standing access. Verbatim, the manifest holds `http://127.0.0.1/*` and `http://localhost/*` as standing hosts. It holds `*://*.bilibili.com/*`, `*://*.hdslb.com/*`, `*://*.youtube.com/*`, `*://*.googlevideo.com/*`, `*://*.bsky.app/*`, and `https://sponsor.ajay.app/*` as optional hosts.
+  Apogee reaches each other site strictly on demand through `activeTab` when you click Summarize or Ask. There is zero `<all_urls>` standing access. Verbatim, the manifest holds `http://127.0.0.1/*`, `http://localhost/*`, and `http://[::1]/*` as standing hosts. It holds `*://*.bilibili.com/*`, `*://*.hdslb.com/*`, `*://*.youtube.com/*`, `*://*.googlevideo.com/*`, `*://*.bsky.app/*`, and `https://sponsor.ajay.app/*` as optional hosts.
 
 - **`contextMenus`**: It adds the "Summarize this page" right-click menu entry. It sees no more of your browsing than the page you right-clicked. `activeTab` already covers that page.
 

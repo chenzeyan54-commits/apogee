@@ -32,7 +32,7 @@ If Settings shows the model list as defaults, or summaries fail with a connectio
 
 2. Check you have a model pulled: `ollama list`. If the list is empty, run `ollama pull <model>` (for example `ollama pull llama3.2`).
 
-3. Apogee only talks to Ollama over plain http on localhost or 127.0.0.1. Apogee refuses remote hosts on purpose, so page text never leaves your machine. To use a remote server, forward its port over ssh (for example `ssh -L 11434:localhost:11434 ...`). Point Apogee at localhost.
+3. Apogee only talks to Ollama over plain http on a loopback address (localhost, 127.0.0.1, or [::1]). Apogee refuses remote hosts on purpose, so page text never leaves your machine. To use a remote server, forward its port over ssh (for example `ssh -L 11434:localhost:11434 ...`). Point Apogee at localhost.
 
 4. The same three rules apply to llama.cpp. Defaults for llama.cpp: `llama-server` at `http://127.0.0.1:8080`. Health check: `curl http://127.0.0.1:8080/health`. If the server uses `--api-key`, the key in Settings must match.
 

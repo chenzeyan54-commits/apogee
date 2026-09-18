@@ -64,6 +64,29 @@ test("private-use placeholder marks in input cannot inject links (#187)", () => 
   assert.ok(html.includes("<a href="), "genuine link still renders");
 });
 
+test("ascii link tokens in input cannot hijack real links (#294)", () => {
+  resetLinkify();
+  const html = renderMarkdown(
+    "@@APOGEE-LINK-0@@\n[real](https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
+  );
+  assert.ok(html.includes("<a href="), "genuine link still renders");
+  assert.ok(
+    !html.includes("@@APOGEE-LINK-"),
+    "typed token is stripped, never expanded",
+  );
+  assert.ok(
+    (html.match(/<a href=/g) || []).length === 1,
+    "exactly one link renders",
+  );
+});
+
+test("literal PUA marks are stripped, not expanded (#294)", () => {
+  resetLinkify();
+  const html = renderMarkdown("a\uE000b");
+  assert.ok(!html.includes("\uE000"), "raw PUA mark is stripped");
+  assert.ok(html.includes("ab"), "surrounding text survives");
+});
+
 test("linkify allow-list: same-origin and youtube/bilibili only (#187)", () => {
   resetLinkify();
   setLinkifyOriginFromUrl("https://example.com/article");

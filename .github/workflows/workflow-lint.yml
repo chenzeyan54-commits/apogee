@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Run actionlint
-        uses: reviewdog/action-actionlint@v1.73.4
+        uses: reviewdog/action-actionlint@v1.74.0
         with:
           fail_level: error
 
@@ -46,7 +46,7 @@ jobs:
       # security-events: write, which this read-only workflow must not have.
       # Per the action docs these two are mutually exclusive.
       - name: Run zizmor
-        uses: zizmorcore/zizmor-action@v0.6.3
+        uses: zizmorcore/zizmor-action@v0.6.4
         with:
           inputs: .github/workflows
           online-audits: false

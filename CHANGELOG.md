@@ -126,6 +126,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Check for URL-shaped storage keys instead of substring match ([7c25ae2](https://github.com/darshi1337/apogee/commit/7c25ae28b8b4df86e6921d35b64b5b21b57ecd27))
 - Validate summary link protocols ([6c70c08](https://github.com/darshi1337/apogee/commit/6c70c08df47821940c9dc21b0bcca7017b1d53da))
 - Testable http(s) allowlist helper for summary link navigation ([a9dfefd](https://github.com/darshi1337/apogee/commit/a9dfefd66d4b1f99f8e52b2753c073baceb2508f))
+- Stop triple-buffering 50MB file uploads, cap expanded text ([6611734](https://github.com/darshi1337/apogee/commit/66117343e962c0c232d48607b27fb17d25f4b67e))
+- Cap notification message length to prevent truncation (#252) ([02e49fb](https://github.com/darshi1337/apogee/commit/02e49fbd24d29832f57e1b3f7d3406cf9846d9e1))
+- Address review nits for notification cap (#252) ([c5fc538](https://github.com/darshi1337/apogee/commit/c5fc53804125d12aa108ad0a26b40ff9e6d1b6f2))
+- Per-engine inference locks with timeout, keep healthy engine on transient error (#268) ([6d81524](https://github.com/darshi1337/apogee/commit/6d81524ef7df3a21edb95c3a4419504e5d2aa805))
+- Keep lock-timeout timer referenced so waiters are never cancelled ([d1d4635](https://github.com/darshi1337/apogee/commit/d1d46354c721d7a50914a16cd5a2a41753fe155a))
+- Bound SW/offscreen ingress, cap map chunks and stream text (#269) ([91f8903](https://github.com/darshi1337/apogee/commit/91f89036bfa60a549806ceef21c673e03baef64f))
+- Responsive nav and reduced-motion pass (#241) ([574fc68](https://github.com/darshi1337/apogee/commit/574fc6892755720ccc0d38850308ace475072637))
+- Reuse cached content when re-rendering a summary in a different format (#177) ([e85c92c](https://github.com/darshi1337/apogee/commit/e85c92cb967c5c1f2da7df02a3aad07cb8a5f057))
+- Restore Ollama connectivity for loopback variants without opening SSRF ([7727ae4](https://github.com/darshi1337/apogee/commit/7727ae434ae90af558ee377327f196a8e64d4e83))
+- Name http://[::1]/* verbatim in PRIVACY.md for the permissions-doc check ([2fb63b1](https://github.com/darshi1337/apogee/commit/2fb63b17c23091c06fc71f6a86442b7aa4260128))
+- Remove dead plaintext export, getURL fallbacks, PUA link token ([9da732e](https://github.com/darshi1337/apogee/commit/9da732e128b00addfd1b5f73a5f2d93ee0a99f70))
+- Drop dead highlight overlay, rename dev script, add coverage flag ([e2953e5](https://github.com/darshi1337/apogee/commit/e2953e5ec99c9dea86a986317e72ada417e855dd))
+- Remove unused gmail brand icon ([84b6b1c](https://github.com/darshi1337/apogee/commit/84b6b1cf22b3f1add33f7a9abece6072ae9cd39d))
+- Add timeout auto-teardown and re-entry cleanup for selection capture ([8906cfe](https://github.com/darshi1337/apogee/commit/8906cfe5d767e8c6099f85cbf35cde8c5fcd1e7b))
+- Format selection test with prettier ([95fe713](https://github.com/darshi1337/apogee/commit/95fe713ecf163fbb5cf9d5c436a74f08ff69dd29))
+- Cover happy-path capture and bound re-entry timer ([820b794](https://github.com/darshi1337/apogee/commit/820b7941903e218de3ef7579b0a4b96388cf4918))
 
 ### Security
 

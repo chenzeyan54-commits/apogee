@@ -3,7 +3,6 @@ import assert from "node:assert";
 import {
   formatSummaryAsJSON,
   formatSummaryAsMarkdown,
-  formatSummaryAsPlainText,
   safeExportFilename,
 } from "../../lib/util/exportFormat.js";
 
@@ -69,19 +68,6 @@ test("formatSummaryAsMarkdown includes YAML frontmatter when includeFrontmatter 
     ),
   );
 });
-test("formatSummaryAsPlainText removes Markdown formatting", () => {
-  const result = formatSummaryAsPlainText({
-    title: "Example Article",
-    url: "https://example.com/article",
-    summary: "## Key points\n\n- **First point**\n- _Second point_",
-  });
-
-  assert.strictEqual(
-    result,
-    "Example Article\n\nSource: https://example.com/article\n\nKey points\n\n- First point\n- Second point\n",
-  );
-});
-
 test("formatSummaryAsJSON includes all fields and preserves summary structure", () => {
   const result = formatSummaryAsJSON({
     title: "Example Article",

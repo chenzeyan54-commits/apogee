@@ -74,3 +74,13 @@ test("getSettings falls back on unknown provider and non-loopback hosts", async 
   assert.equal(settings.ollamaHost, DEFAULT_OLLAMA_HOST);
   assert.equal(settings.llamaHost, DEFAULT_LLAMACPP_HOST);
 });
+
+test("getSettings preserves IPv6 loopback and normalizes loopback variants", async () => {
+  installFakeStorage({
+    ollamaHost: "http://[::1]:11434/",
+    llamaHost: "http://localhost",
+  });
+  const settings = await getSettings();
+  assert.equal(settings.ollamaHost, "http://[::1]:11434");
+  assert.equal(settings.llamaHost, "http://localhost:8080");
+});

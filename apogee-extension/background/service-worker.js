@@ -44,6 +44,8 @@ import {
   MAX_BILIBILI_SUBTITLE_SEGMENTS,
   MAX_FINALIZE_TEXT_CHARS,
   MAX_UPLOAD_FILE_BYTES,
+  appendStreamTextCapped,
+  assertIngressPayloadOk,
 } from "../lib/extract/fileLimits.js";
 import {
   recordPageAccessEvent,
@@ -67,6 +69,7 @@ import {
   hashUrl,
   persistSummaryIfAllowed,
   persistContent,
+  getCachedContent,
   shouldPersist,
   isPrivateUrl,
   CACHEABLE_PAGE_TYPES,
@@ -599,10 +602,17 @@ function createBufferedStream(streamId, { finalize, model, title, url }) {
 
   const emitChunk = (text) => {
     if (!text || stream.cancelled) return;
-    stream.text += text;
+    // Bound live accumulation pre-cap (#269): finalize caps at write time,
+    // but stream.text grows with every token before that. Keep the head and
+    // drop the tail so a runaway model cannot bloat SW memory.
+    const capped = appendStreamTextCapped(stream.text, text);
+    const accepted = capped.text.length - stream.text.length;
+    stream.text = capped.text;
     if (stream.firstTokenTime == null)
       stream.firstTokenTime = performance.now();
-    stream.tokenCount += tokensForChunk(text);
+    stream.tokenCount += tokensForChunk(
+      accepted > 0 ? text.slice(0, accepted) : "",
+    );
     broadcastToStream(stream, { type: "chunk", text });
     const elapsedMs = performance.now() - stream.firstTokenTime;
     if (isWarmedUp(stream.tokenCount, elapsedMs)) {
@@ -642,6 +652,20 @@ async function startLocalHttpStream(
     title,
     url,
   });
+
+  // Ingress bound (#269): payloads arrive via extension messaging unbounded;
+  // reject oversize with a UserFacingError before chunking fans out into
+  // sequential model calls.
+  try {
+    assertIngressPayloadOk({ content, question, title, url });
+  } catch (err) {
+    finish({
+      type: "error",
+      error: err.message,
+      userFacing: !!err?.isUserFacing,
+    });
+    return;
+  }
 
   let validHost;
   try {
@@ -791,6 +815,17 @@ async function startTransformersStream(
     url,
   });
 
+  try {
+    assertIngressPayloadOk({ content, question, title, url });
+  } catch (err) {
+    finish({
+      type: "error",
+      error: err.message,
+      userFacing: !!err?.isUserFacing,
+    });
+    return;
+  }
+
   const onProgress = (progress) => {
     chrome.runtime
       .sendMessage({ type: "model-progress", progress, modelId: model })
@@ -810,85 +845,93 @@ async function startTransformersStream(
   const { customInstructions } = await getSettings();
 
   try {
-    await withTransformersEngine(model, onProgress, async (eng) => {
-      if (action === "summarize") {
-        const effectiveLanguage = await resolveEffectiveLanguage(
-          content,
-          language,
-        );
-        const generator = summarizeText(
-          {
-            text: content,
-            title,
-            url,
-            mode,
-            type,
-            model,
-            language: effectiveLanguage,
-            customInstructions,
-            isSelection,
-            signal: stream.controller.signal,
-          },
-          {
-            translateFn,
-            chatStreamFn: async function* (_host, _model, prompt, opts) {
-              let count = 0;
-              for await (const token of transformersChatStream(eng, prompt, {
-                system: opts?.system,
-              })) {
-                if (stream.cancelled) return;
-                count++;
-                if (count % 24 === 0) {
-                  onProgress({
-                    progress: 0,
-                    text: `${longNote}${stageLabel} (${count} words)`,
-                  });
+    await withTransformersEngine(
+      model,
+      onProgress,
+      async (eng) => {
+        if (action === "summarize") {
+          const effectiveLanguage = await resolveEffectiveLanguage(
+            content,
+            language,
+          );
+          const generator = summarizeText(
+            {
+              text: content,
+              title,
+              url,
+              mode,
+              type,
+              model,
+              language: effectiveLanguage,
+              customInstructions,
+              isSelection,
+              signal: stream.controller.signal,
+            },
+            {
+              translateFn,
+              chatStreamFn: async function* (_host, _model, prompt, opts) {
+                let count = 0;
+                for await (const token of transformersChatStream(eng, prompt, {
+                  system: opts?.system,
+                })) {
+                  if (stream.cancelled) return;
+                  count++;
+                  if (count % 24 === 0) {
+                    onProgress({
+                      progress: 0,
+                      text: `${longNote}${stageLabel} (${count} words)`,
+                    });
+                  }
+                  yield token;
                 }
-                yield token;
-              }
+              },
+              onProgress: (p) => {
+                if (p.stage === "truncated") {
+                  longNote = "Long page - summarizing the key parts. ";
+                  onProgress({ progress: 0, text: longNote.trim() });
+                  return;
+                }
+                if (p.stage === "reduce") stageLabel = "Merging summary...";
+                else if (p.stage === "translate") stageLabel = "Translating...";
+                else
+                  stageLabel = `Summarizing part ${p.index + 1} of ${p.total}...`;
+                onProgress({ progress: 0, text: longNote + stageLabel });
+              },
             },
-            onProgress: (p) => {
-              if (p.stage === "truncated") {
-                longNote = "Long page - summarizing the key parts. ";
-                onProgress({ progress: 0, text: longNote.trim() });
-                return;
-              }
-              if (p.stage === "reduce") stageLabel = "Merging summary...";
-              else if (p.stage === "translate") stageLabel = "Translating...";
-              else
-                stageLabel = `Summarizing part ${p.index + 1} of ${p.total}...`;
-              onProgress({ progress: 0, text: longNote + stageLabel });
+          );
+          for await (const token of generator) {
+            emitChunk(token);
+          }
+        } else if (action === "ask") {
+          const relevantContent = await getRelevantAskContent(
+            content,
+            question,
+          );
+          const prompt = withCustomInstructions(
+            buildAnswerPrompt(title, url, relevantContent, question),
+            customInstructions,
+          );
+          const chat = (p, opts) =>
+            transformersChatStream(eng, p, { system: opts?.system });
+          const askLanguage = await resolveEffectiveLanguage(content, language);
+          for await (const token of streamInTargetLanguage(
+            chat,
+            prompt,
+            askLanguage,
+            {
+              signal: stream.controller.signal,
+              translateFn,
             },
-          },
-        );
-        for await (const token of generator) {
-          emitChunk(token);
+          )) {
+            if (stream.cancelled) break;
+            emitChunk(token);
+          }
+        } else {
+          throw new Error(`Unknown transformers-stream action: ${action}`);
         }
-      } else if (action === "ask") {
-        const relevantContent = await getRelevantAskContent(content, question);
-        const prompt = withCustomInstructions(
-          buildAnswerPrompt(title, url, relevantContent, question),
-          customInstructions,
-        );
-        const chat = (p, opts) =>
-          transformersChatStream(eng, p, { system: opts?.system });
-        const askLanguage = await resolveEffectiveLanguage(content, language);
-        for await (const token of streamInTargetLanguage(
-          chat,
-          prompt,
-          askLanguage,
-          {
-            signal: stream.controller.signal,
-            translateFn,
-          },
-        )) {
-          if (stream.cancelled) break;
-          emitChunk(token);
-        }
-      } else {
-        throw new Error(`Unknown transformers-stream action: ${action}`);
-      }
-    });
+      },
+      { signal: stream.controller.signal },
+    );
     finish({ type: "done" });
   } catch (err) {
     finish({
@@ -945,7 +988,14 @@ export async function runBackgroundSummarize(
       isPdf: false,
     };
   } else {
-    pageData = await extractFromActiveTab(tab);
+    // Reuse already-extracted content when available, so a re-summarize in
+    // another format only re-runs the model (#177).
+    const cached = await getCachedContent(tab.url);
+    if (cached && CACHEABLE_PAGE_TYPES.has(cached.type)) {
+      pageData = cached;
+    } else {
+      pageData = await extractFromActiveTab(tab);
+    }
     if (!pageData) {
       throw new UserFacingError(COULD_NOT_READ_THIS_PAGE_ERROR_MSG);
     }
@@ -974,7 +1024,7 @@ export async function runBackgroundSummarize(
   }
 
   let content = pageData.content;
-  if (pageData.isPdf) {
+  if (pageData.isPdf && !content) {
     try {
       content = await extractPdfContent(tab);
     } catch (err) {
@@ -1875,6 +1925,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       switch (message.action) {
         case "summarize":
         case "ask": {
+          assertIngressPayloadOk(message.payload || {});
           await ensureOffscreenDocument();
 
           const streamId = nextStreamId("webllm");
@@ -1902,6 +1953,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "ollama-stream": {
+          assertIngressPayloadOk(message.payload || {});
           const streamId = nextStreamId("ollama");
           const settings = await getSettings();
           const trustedFinalize =
@@ -1920,6 +1972,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "llamacpp-stream": {
+          assertIngressPayloadOk(message.payload || {});
           const streamId = nextStreamId("llamacpp");
           const settings = await getSettings();
           const trustedFinalize =
@@ -1999,6 +2052,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "transformers-stream": {
+          assertIngressPayloadOk(message.payload || {});
           const streamId = nextStreamId("transformers");
           const settings = await getSettings();
           const trustedFinalize =
@@ -2122,6 +2176,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "find-passage": {
+          assertIngressPayloadOk(message.payload || {});
           if (!hasOffscreenAPI) {
             try {
               const { content, query } = message.payload || {};
@@ -2143,6 +2198,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "retrieve-context": {
+          assertIngressPayloadOk(message.payload || {});
           if (!hasOffscreenAPI) {
             try {
               const { content, question } = message.payload || {};
@@ -2323,8 +2379,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
       if (typeof chrome !== "undefined" && chrome.notifications) {
         chrome.notifications.create("apogee-multitab-error", {
           type: "basic",
-          iconUrl:
-            chrome.runtime.getURL("assets/icon.png") || "assets/icon-48.png",
+          iconUrl: chrome.runtime.getURL("assets/icon.png"),
           title: "Apogee",
           message: "Could not extract content from the selected tab(s).",
         });
@@ -2337,7 +2392,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   if (typeof chrome !== "undefined" && chrome.notifications) {
     chrome.notifications.create(notificationId, {
       type: "basic",
-      iconUrl: chrome.runtime.getURL("assets/icon.png") || "assets/icon-48.png",
+      iconUrl: chrome.runtime.getURL("assets/icon.png"),
       title: "Apogee Multi-Tab Summary",
       message: `Extracting and summarizing ${extractedResults.length} selected tab(s)...`,
     });
@@ -2561,7 +2616,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   if (typeof chrome !== "undefined" && chrome.notifications) {
     chrome.notifications.create(`${notificationId}-ready`, {
       type: "basic",
-      iconUrl: chrome.runtime.getURL("assets/icon.png") || "assets/icon-48.png",
+      iconUrl: chrome.runtime.getURL("assets/icon.png"),
       title: "Apogee Multi-Tab Summary Ready",
       message: `Synthesized summary for ${extractedResults.length} tabs. Click to view in Apogee!`,
     });

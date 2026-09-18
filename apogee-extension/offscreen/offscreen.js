@@ -25,6 +25,10 @@ import {
 import { initDebugLogging } from "../lib/util/log.js";
 import { broadcastToStream } from "../lib/util/streamBroadcast.js";
 import {
+  appendStreamTextCapped,
+  assertIngressPayloadOk,
+} from "../lib/extract/fileLimits.js";
+import {
   tokensForChunk,
   isWarmedUp,
   tokensPerSecond,
@@ -105,6 +109,17 @@ let currentModelId = null;
 let loadingModelId = null;
 
 const acquireLock = createLock();
+
+// Bound the wait for the WebLLM engine so one stalled model download does
+// not head-of-line-block every later stream forever. Downloads resume from
+// cache, so failing fast with a clear message beats hanging.
+const ENGINE_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
+
+function isCorruptingEngineError(err) {
+  return /out of memory|\boom\b|buffer allocation|gpubuffer|allocation failed|memory limit|disposed|destroyed|context (was )?lost/i.test(
+    err?.message || "",
+  );
+}
 
 let engineOwnerStreamId = null;
 
@@ -213,8 +228,12 @@ async function ensureEngine(modelId) {
         break;
       } catch (err) {
         console.error(`Model load attempt ${attempt} failed:`, err);
-        if (!isInterruptedDownloadError(err)) throw err;
+        if (!isInterruptedDownloadError(err)) {
+          loadingModelId = null;
+          throw err;
+        }
         if (attempt >= MAX_DOWNLOAD_ATTEMPTS) {
+          loadingModelId = null;
           throw new Error(
             "The model download keeps getting interrupted (the download " +
               "server stalled or the connection dropped). Progress so far " +
@@ -249,15 +268,35 @@ function resetEngineState() {
   loadingModelId = null;
 }
 
-async function withEngine(modelId, fn, ownerStreamId = null) {
-  const release = await acquireLock();
-  engineOwnerStreamId = ownerStreamId;
+async function withEngine(modelId, fn, ownerStreamId = null, options = {}) {
+  // Allow (modelId, fn, { signal, lockTimeout }) as well as the legacy
+  // (modelId, fn, streamId) shape.
+  let owner = ownerStreamId;
+  let opts = options;
+  if (ownerStreamId && typeof ownerStreamId === "object") {
+    opts = ownerStreamId;
+    owner = opts.ownerStreamId ?? null;
+  }
+  const release = await acquireLock({
+    timeout: opts.lockTimeout ?? ENGINE_LOCK_TIMEOUT_MS,
+    signal: opts.signal,
+  });
+  engineOwnerStreamId = owner;
   try {
+    // Load failures already cleared loading state; a lock timeout/abort
+    // throws above before we hold anything, so never discard here.
     const eng = await ensureEngine(modelId);
-    return await fn(eng);
-  } catch (err) {
-    resetEngineState();
-    throw err;
+    try {
+      return await fn(eng);
+    } catch (err) {
+      // A transient generation failure must not discard a healthy multi-GB
+      // engine. Only drop it when the error shows the engine itself is
+      // corrupted (OOM); otherwise the next stream would pay a full reload.
+      if (isCorruptingEngineError(err)) {
+        resetEngineState();
+      }
+      throw err;
+    }
   } finally {
     engineOwnerStreamId = null;
     release();
@@ -521,6 +560,7 @@ async function runTransformersJob(
         emit({ type: "error", error: `Unknown action: ${pending.action}` });
       }
     },
+    { signal },
   );
 }
 
@@ -531,7 +571,9 @@ async function runStream(streamId, pending, stream) {
   const emit = (msg) => {
     if (stream.cancelled) return;
     if (msg.type === "chunk") {
-      stream.text += msg.text || "";
+      // Bound live accumulation pre-cap (#269): keep the head, drop the tail.
+      const capped = appendStreamTextCapped(stream.text, msg.text || "");
+      stream.text = capped.text;
       if (stream.firstTokenTime == null) {
         stream.firstTokenTime = performance.now();
       }
@@ -645,7 +687,7 @@ async function runStream(streamId, pending, stream) {
               });
           }
         },
-        streamId,
+        { ownerStreamId: streamId, signal: controller.signal },
       );
     }
   } catch (err) {
@@ -758,6 +800,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       switch (message.action) {
         case "summarize":
         case "ask": {
+          assertIngressPayloadOk(message.payload || {});
           const streamId = message.streamId;
           const stream = {
             text: "",
@@ -807,6 +850,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "retrieve-context": {
+          assertIngressPayloadOk(message.payload || {});
           const { content, question } = message.payload;
           const relevantContent = await retrieveRelevantContent({
             content,
@@ -817,6 +861,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "find-passage": {
+          assertIngressPayloadOk(message.payload || {});
           const { content, query } = message.payload;
           const passage = await findBestPassage({ content, query });
           sendResponse({ passage });
@@ -824,6 +869,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "suggest-questions": {
+          assertIngressPayloadOk(message.payload || {});
           const {
             title,
             url,
@@ -883,6 +929,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ error: "generate-text requires a prompt" });
             break;
           }
+          assertIngressPayloadOk({ prompt });
           const qLanguage = await resolveEffectiveLanguage("", language);
           const translateFn = opusTranslateFor(translationEngine);
           const text =

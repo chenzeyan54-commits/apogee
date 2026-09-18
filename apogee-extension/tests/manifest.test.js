@@ -74,7 +74,8 @@ test("manifest.json permissions enforce local-first privacy boundary", () => {
   hostPermissions.forEach((host) => {
     assert.ok(
       host.startsWith("http://127.0.0.1") ||
-        host.startsWith("http://localhost"),
+        host.startsWith("http://localhost") ||
+        host.startsWith("http://[::1]"),
       `Standing host permission ${host} must be restricted to loopback addresses`,
     );
   });
@@ -150,6 +151,7 @@ test("declared network egress matches the documented allow-list (#180)", () => {
     "'self'",
     "http://127.0.0.1:*",
     "http://localhost:*",
+    "http://[::1]:*",
     "https://huggingface.co",
     "https://*.huggingface.co",
     "https://*.hf.co",
@@ -177,7 +179,7 @@ test("declared network egress matches the documented allow-list (#180)", () => {
 
   assert.deepStrictEqual(
     new Set(manifest.host_permissions || []),
-    new Set(["http://127.0.0.1/*", "http://localhost/*"]),
+    new Set(["http://127.0.0.1/*", "http://localhost/*", "http://[::1]/*"]),
     "standing host_permissions must stay loopback-only",
   );
   assert.deepStrictEqual(

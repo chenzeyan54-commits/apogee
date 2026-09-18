@@ -20,6 +20,12 @@ export const LOOPBACK_CORS_SESSION_RULE_ID = 1;
 // Literal for chrome.tabs.TAB_ID_NONE so the rule builder works without the tabs permission.
 export const TAB_ID_NONE = -1;
 
+// Loopback hosts covered by the Origin-strip rule. Kept in sync with the
+// shared validator in ollamaHost.js: 127.0.0.1, localhost, and the IPv6
+// loopback [::1] (listed with and without brackets - runtimes differ on which
+// form they match against - so an IPv6 Ollama gets the same CORS treatment).
+export const LOOPBACK_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1"];
+
 export function buildLoopbackCorsSessionRule() {
   return {
     id: LOOPBACK_CORS_SESSION_RULE_ID,
@@ -29,8 +35,8 @@ export function buildLoopbackCorsSessionRule() {
       requestHeaders: [{ header: "origin", operation: "remove" }],
     },
     condition: {
-      requestDomains: ["localhost", "127.0.0.1"],
-      excludedInitiatorDomains: ["localhost", "127.0.0.1"],
+      requestDomains: [...LOOPBACK_HOSTS],
+      excludedInitiatorDomains: [...LOOPBACK_HOSTS],
       resourceTypes: ["xmlhttprequest"],
       tabIds: [TAB_ID_NONE],
     },
@@ -76,4 +82,18 @@ export function ensureLoopbackCorsRule() {
 /** Test-only reset for the cached registration promise. */
 export function resetLoopbackCorsRuleForTests() {
   ensurePromise = null;
+}
+
+/**
+ * Same registration as ensureLoopbackCorsRule, but never blocks the first
+ * loopback request behind it: if the declarativeNetRequest handshake hangs
+ * (slow runtime, first-call jank), the fetch goes out after `timeoutMs` under
+ * the bundled static fallback rule instead of looking like a connection
+ * failure. Never rejects.
+ */
+export function ensureLoopbackCorsRuleSoon(timeoutMs = 750) {
+  return Promise.race([
+    ensureLoopbackCorsRule(),
+    new Promise((resolve) => setTimeout(() => resolve("timeout"), timeoutMs)),
+  ]);
 }

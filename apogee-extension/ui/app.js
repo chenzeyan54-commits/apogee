@@ -76,6 +76,9 @@ import {
 } from "../lib/extract/pageExtraction.js";
 import {
   assertUploadSizeOk,
+  MAX_EXTRACTED_TEXT_CHARS,
+  readTextHead,
+  truncateExtractedText,
   truncatePastedText,
 } from "../lib/extract/fileLimits.js";
 import {
@@ -1544,10 +1547,13 @@ async function summarizeActivePage() {
     const model = getModelForSettings(settings);
     currentSummaryLanguage = settings.summaryLanguage;
     currentTranslationEngine = settings.translationEngine;
-    if (tab?.url) {
-      await ensurePermissionsForUrl(tab.url);
-    }
-    const pageData = await extractFromActiveTab(tab);
+    // Reuse extracted content already in memory or the content cache, so a
+    // re-summarize in another format only re-runs the model (#177).
+    // A previous selection summary lives only in memory and is summarized
+    // through the selection path: clear it so a page summarize extracts the
+    // page itself instead of re-summarizing stale selected text.
+    if (currentPageData?.type === "selection") currentPageData = null;
+    const pageData = await getPageData(tab);
 
     if (!pageData) {
       renderError(summaryText, COULD_NOT_READ_THIS_PAGE_ERROR_MSG);
@@ -1556,13 +1562,6 @@ async function summarizeActivePage() {
     if (!pageData.isPdf && !pageData.content) {
       renderError(summaryText, NOTHING_TO_SUMMARIZE_ERROR_MSG);
       return;
-    }
-    currentPageData = pageData;
-    if (
-      CACHEABLE_PAGE_TYPES.has(pageData.type) &&
-      (await shouldPersist(tab.url))
-    ) {
-      await persistContent(tab.url, pageData);
     }
 
     const cacheKey = await getSummaryCacheKey(
@@ -1598,24 +1597,31 @@ async function summarizeActivePage() {
     let streamId, stream;
 
     if (pageData.isPdf) {
-      setLoadingIndicator(summaryText, "Extracting PDF");
-      let pdfContent;
-      try {
-        pdfContent = await extractPdfContent(tab);
-      } catch (err) {
-        const msg = err?.message || String(err);
-        if (msg.startsWith("PDF_TOO_LARGE:")) {
-          renderError(
-            summaryText,
-            "This PDF is too large to process inside the extension. Try a shorter document.",
-          );
+      // getPageData already filled the PDF text on a cache hit; extract
+      // only when it is still missing (#177).
+      let pdfContent = pageData.content;
+      if (!pdfContent) {
+        if (tab?.url) {
+          await ensurePermissionsForUrl(tab.url);
+        }
+        setLoadingIndicator(summaryText, "Extracting PDF");
+        try {
+          pdfContent = await extractPdfContent(tab);
+        } catch (err) {
+          const msg = err?.message || String(err);
+          if (msg.startsWith("PDF_TOO_LARGE:")) {
+            renderError(
+              summaryText,
+              "This PDF is too large to process inside the extension. Try a shorter document.",
+            );
+            return;
+          }
+          throw err;
+        }
+        if (!pdfContent) {
+          renderError(summaryText, COULD_NOT_EXTRACT_TEXT_FROM_PDF_ERROR_MSG);
           return;
         }
-        throw err;
-      }
-      if (!pdfContent) {
-        renderError(summaryText, COULD_NOT_EXTRACT_TEXT_FROM_PDF_ERROR_MSG);
-        return;
       }
       pageData.content = pdfContent;
       setLoadingIndicator(summaryText, randomSummarizeVerb());
@@ -2402,45 +2408,78 @@ const fileUploadInput = document.getElementById("fileUploadInput");
 
 async function summarizeFile(file) {
   // Same ceiling as the tab-PDF path, checked before any read so an
-  // oversized file never becomes several in-memory copies (arrayBuffer +
-  // base64 + binary string) on the way in.
+  // oversized file never enters memory (#184). The PDF branch below parses
+  // straight from bytes (#267): the old arrayBuffer -> binary string ->
+  // base64 -> decode round-trip held ~3x the file concurrently.
   const lowerName = file.name.toLowerCase();
-  assertUploadSizeOk(
-    file.size,
-    lowerName.endsWith(".pdf")
-      ? "PDF"
-      : lowerName.endsWith(".docx")
-        ? "DOCX file"
-        : "file",
-  );
+  const label = lowerName.endsWith(".pdf")
+    ? "PDF"
+    : lowerName.endsWith(".docx")
+      ? "DOCX file"
+      : "file";
+  assertUploadSizeOk(file.size, label);
   let text;
+  let truncationNotice = "";
   if (lowerName.endsWith(".pdf")) {
-    const arrayBuffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = "";
-    const chunkSize = 0x8000;
-    for (let i = 0; i < bytes.byteLength; i += chunkSize) {
-      binary += String.fromCharCode.apply(
-        null,
-        bytes.subarray(i, i + chunkSize),
-      );
+    let arrayBuffer = await file.arrayBuffer();
+    try {
+      // file.size can be missing or wrong; re-check the actual bytes.
+      assertUploadSizeOk(arrayBuffer.byteLength, "PDF");
+      const { extractPdfTextFromBytes } =
+        await import("../lib/extract/pdfExtract.js");
+      let bytes = new Uint8Array(arrayBuffer);
+      try {
+        // maxChars stops page parsing early with a user-visible note, so a
+        // pathological expansion never becomes a multi-MB string in the popup.
+        const result = await extractPdfTextFromBytes(bytes, {
+          maxChars: MAX_EXTRACTED_TEXT_CHARS,
+          label: "PDF",
+        });
+        text = result.text;
+        if (result.truncated) {
+          truncationNotice = `PDF content exceeded the text limit and was truncated to the first ${MAX_EXTRACTED_TEXT_CHARS} characters.`;
+        }
+      } finally {
+        // Intentional release: drop the view so the buffer can GC early.
+        bytes = null;
+      }
+    } finally {
+      // eslint-disable-next-line no-useless-assignment
+      arrayBuffer = null;
     }
-    const base64 = btoa(binary);
-    const { extractPdfText } = await import("../lib/extract/pdfExtract.js");
-    text = await extractPdfText(base64);
   } else if (lowerName.endsWith(".docx")) {
-    const { extractDocxText } = await import("../lib/extract/docxExtract.js");
-    text = await extractDocxText(await file.arrayBuffer());
+    let arrayBuffer = await file.arrayBuffer();
+    try {
+      assertUploadSizeOk(arrayBuffer.byteLength, "DOCX file");
+      const { extractDocxText } = await import("../lib/extract/docxExtract.js");
+      const capped = truncateExtractedText(
+        await extractDocxText(arrayBuffer),
+        "DOCX file",
+      );
+      text = capped.text;
+      if (capped.truncated) {
+        truncationNotice = `DOCX content exceeded the text limit and was truncated to the first ${MAX_EXTRACTED_TEXT_CHARS} characters.`;
+      }
+    } finally {
+      // Intentional release: drop the buffer so it can GC before summarize.
+      // eslint-disable-next-line no-useless-assignment
+      arrayBuffer = null;
+    }
   } else {
-    // Plain-text branch (txt/md/json/html): file.size bounds the upload but
-    // the post-read string was unbounded, so cap it before it fans out (#211).
+    // Plain-text branch (txt/md/json/html): stream only the head of the file
+    // so a 50 MB upload never materializes as a 50 MB string (#267).
     // summarizeCustomContent re-applies the same cap as a choke point.
-    text = truncatePastedText(await file.text()).text;
+    const head = await readTextHead(file);
+    text = head.text;
+    if (head.truncated) {
+      truncationNotice = `File content exceeded the text limit and was truncated to the first ${MAX_EXTRACTED_TEXT_CHARS} characters.`;
+    }
   }
 
   if (!text || !text.trim()) {
     throw new Error("The file contains no readable text.");
   }
+  if (truncationNotice) announce(truncationNotice);
   await summarizeCustomContent(file.name, text.trim());
 }
 
@@ -2751,8 +2790,20 @@ backendUrlInput?.addEventListener("change", async () => {
   }
   try {
     val = validateOllamaHost(val);
-  } catch {
-    val = DEFAULT_OLLAMA_HOST;
+  } catch (err) {
+    // Never silently swap an invalid host for the default: that hides the
+    // real address Ollama listens on. Keep the saved value and say why the
+    // typed one cannot be used.
+    const settings = await getSettings();
+    backendUrlInput.value = settings.ollamaHost;
+    renderStatusError(
+      localModelStatus,
+      `That Ollama host cannot be used (${err?.message || "invalid host"}). ` +
+        `Use an http:// loopback address such as ${DEFAULT_OLLAMA_HOST}.`,
+    );
+    const status = await checkConnection();
+    updateConnectionUI(status?.ready === true);
+    return;
   }
   backendUrlInput.value = val;
   const settings = await saveSettings({ ollamaHost: val });
@@ -2777,8 +2828,9 @@ llamaHostInput?.addEventListener("change", async () => {
   }
   try {
     // Same shared validator the service worker enforces at request time, with
-    // the llama.cpp default port — an invalid host falls back to the default
-    // instead of persisting, mirroring the Ollama handler above.
+    // the llama.cpp default port. An invalid host is reported, not persisted:
+    // silently falling back to the default hides the address the server
+    // actually listens on.
     let llamaDefaultPort = "8080";
     try {
       llamaDefaultPort = new URL(DEFAULT_LLAMACPP_HOST).port || "8080";
@@ -2789,8 +2841,16 @@ llamaHostInput?.addEventListener("change", async () => {
       label: "llama.cpp",
       defaultPort: llamaDefaultPort,
     });
-  } catch {
-    val = DEFAULT_LLAMACPP_HOST;
+  } catch (err) {
+    const settings = await getSettings();
+    llamaHostInput.value = settings.llamaHost;
+    renderStatusError(
+      llamaModelStatus,
+      `That llama.cpp URL cannot be used (${err?.message || "invalid URL"}). ` +
+        `Use an http:// loopback address such as ${DEFAULT_LLAMACPP_HOST}.`,
+    );
+    await refreshLlamaConnection();
+    return;
   }
   llamaHostInput.value = val;
   await saveSettings({ llamaHost: val });

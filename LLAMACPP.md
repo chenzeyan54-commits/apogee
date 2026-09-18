@@ -33,7 +33,7 @@ llama-server -hf Qwen/Qwen2.5-7B-Instruct-GGUF:Q4_K_M --port 8080 --host 127.0.0
 
 Wait for `listening on http://127.0.0.1:8080`. Keep the terminal open. The server runs in the foreground.
 
-Apogee only links to `127.0.0.1` and `localhost`. It refuses servers bound elsewhere on purpose. Page text cannot leave your machine.
+Apogee only links to loopback addresses (`127.0.0.1`, `localhost`, `[::1]`). It refuses servers bound elsewhere on purpose. Page text cannot leave your machine.
 
 ## Step 3: Configure Apogee
 
@@ -120,7 +120,7 @@ Any instruction-tuned GGUF works. Pick a size your RAM or VRAM can hold.
 
 **Linked, but no model name**: `/v1/models` refused. With an API key set on the server, check the key in Settings matches.
 
-**"Disallowed llama.cpp host"**: the address is not `127.0.0.1` or `localhost`. Apogee refuses remote servers, so page text stays on your machine. To use one on another machine, forward its port first: `ssh -L 8080:localhost:8080 user@host`.
+**"Disallowed llama.cpp host"**: the address is not a loopback address (`127.0.0.1`, `localhost`, or `[::1]`). Apogee refuses remote servers, so page text stays on your machine. To use one on another machine, forward its port first: `ssh -L 8080:localhost:8080 user@host`.
 
 **Summaries cut short or the server complains about context**: Launch with a larger `-c`. Then check the context Apogee found in the status line under the model name.
 

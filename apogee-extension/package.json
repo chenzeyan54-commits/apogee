@@ -8,12 +8,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vite build --watch",
+    "build:watch": "vite build --watch",
     "fetch:model-libs": "node scripts/model-libs.mjs",
     "build:chrome": "TARGET_BROWSER=chrome vite build",
     "build:firefox": "TARGET_BROWSER=firefox vite build",
     "build": "npm run build:chrome && npm run build:firefox",
-    "test": "node --test",
+    "test": "node --test --experimental-test-coverage",
     "lint": "eslint .",
     "lint:webext": "addons-linter dist/firefox",
     "format": "prettier --write .",
@@ -29,13 +29,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "addons-linter": "^10.11.0",
+    "addons-linter": "^10.12.0",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.12.0",
     "linkedom": "^0.18.13",
     "prettier": "^3.9.6",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "web-ext": "^10.4.0"
   },
   "overrides": {

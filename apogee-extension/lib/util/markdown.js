@@ -19,7 +19,10 @@ export function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
-const LINK_PLACEHOLDER_MARK = "";
+const LINK_TOKEN_PREFIX = "@@APOGEE-LINK-";
+const LINK_TOKEN_SUFFIX = "@@";
+const LINK_TOKEN_RE = /@@APOGEE-LINK-(\d+)@@/g;
+const LINK_TOKEN_STRIP_RE = /@@APOGEE-LINK-\d+@@/g;
 
 export const ALWAYS_LINKIFY_HOSTS = new Set(["youtube.com", "bilibili.com"]);
 
@@ -111,7 +114,8 @@ export function extractMarkdownLinks(
   { allowAlwaysHosts = true } = {},
 ) {
   const links = [];
-  const text = escapedText.replace(
+  const cleanText = String(escapedText).replace(LINK_TOKEN_STRIP_RE, "");
+  const text = cleanText.replace(
     /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
     (match, label, href) => {
       if (
@@ -122,7 +126,7 @@ export function extractMarkdownLinks(
       links.push(
         `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`,
       );
-      return `${LINK_PLACEHOLDER_MARK}${links.length - 1}${LINK_PLACEHOLDER_MARK}`;
+      return `${LINK_TOKEN_PREFIX}${links.length - 1}${LINK_TOKEN_SUFFIX}`;
     },
   );
   return { text, links };
@@ -138,7 +142,7 @@ export function renderInline(escapedText, { allowAlwaysHosts = true } = {}) {
     .replace(/__(.+?)__/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1<em>$2</em>")
     .replace(/(^|[^_])_([^_\n]+?)_/g, "$1<em>$2</em>")
-    .replace(/\uE000(\d+)\uE000/g, (match, i) => links[Number(i)] ?? match);
+    .replace(LINK_TOKEN_RE, (match, i) => links[Number(i)] ?? match);
 }
 
 const ALLOWED_MARKDOWN_TAGS = new Set([
@@ -198,8 +202,9 @@ export function sanitizeMarkdownHtml(html) {
 }
 
 export function renderMarkdown(source, { stored = false } = {}) {
-  // Strip private-use placeholder marks from user input so model/cached text
+  // Strip legacy private-use marks from user input so model/cached text
   // cannot inject link placeholders that the restore pass would expand.
+  // Current ASCII link tokens are stripped inside extractMarkdownLinks.
   const allowAlwaysHosts = !stored;
   const inline = (escapedText) =>
     renderInline(escapedText, { allowAlwaysHosts });

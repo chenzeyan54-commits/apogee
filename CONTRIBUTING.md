@@ -41,7 +41,7 @@ Use **Node 22 or newer**, which is what CI runs and what `.nvmrc` pins. Older ve
 ```bash
 cd apogee-extension
 npm install
-npm run dev     # watch mode, rebuilds dist/chrome and dist/firefox on save
+npm run build:watch  # watch mode, rebuilds dist/chrome and dist/firefox on save
 ```
 
 Load `apogee-extension/dist/chrome` (or `dist/firefox`) as an unpacked/temporary extension in your browser. See the main [README](README.md#get-started) for the project overview and [BROWSERS.md](BROWSERS.md) for per-browser notes.

@@ -1,6 +1,6 @@
 import { UserFacingError } from "../util/userError.js";
 import { createConnectionError } from "../util/connectionError.js";
-import { ensureLoopbackCorsRule } from "../util/loopbackCors.js";
+import { ensureLoopbackCorsRuleSoon } from "../util/loopbackCors.js";
 
 class LlamaCppError extends UserFacingError {}
 
@@ -119,7 +119,8 @@ export async function* chatStream(
   const base = host.replace(/\/+$/, "");
 
   // Scope the loopback Origin-strip to this extension's own (non-tab) requests before the first byte goes out.
-  await ensureLoopbackCorsRule();
+  // Time-boxed so a slow declarativeNetRequest handshake cannot stall the first request into a fake connection failure.
+  await ensureLoopbackCorsRuleSoon();
 
   let response;
   try {
@@ -243,7 +244,7 @@ function positiveInt(value) {
  * of a bad key rather than of a server that has nothing loaded.
  */
 export async function checkHealth(host, timeoutMs = 3000, apiKey = "") {
-  await ensureLoopbackCorsRule();
+  await ensureLoopbackCorsRuleSoon();
   const base = host.replace(/\/+$/, "");
   const disconnected = { connected: false, models: [], contextTokens: null };
 

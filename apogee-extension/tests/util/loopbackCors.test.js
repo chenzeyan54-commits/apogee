@@ -3,23 +3,24 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import {
   TAB_ID_NONE,
+  LOOPBACK_HOSTS,
   LOOPBACK_CORS_STATIC_RULE_ID,
   buildLoopbackCorsSessionRule,
   ensureLoopbackCorsRule,
+  ensureLoopbackCorsRuleSoon,
   resetLoopbackCorsRuleForTests,
 } from "../../lib/util/loopbackCors.js";
 
 test("session rule strips Origin on loopback hosts for non-tab requests only", () => {
   const rule = buildLoopbackCorsSessionRule();
   assert.deepStrictEqual(rule.condition.tabIds, [TAB_ID_NONE]);
-  assert.deepStrictEqual(rule.condition.requestDomains, [
-    "localhost",
-    "127.0.0.1",
-  ]);
+  assert.deepStrictEqual(rule.condition.requestDomains, [...LOOPBACK_HOSTS]);
   assert.deepStrictEqual(rule.condition.excludedInitiatorDomains, [
-    "localhost",
-    "127.0.0.1",
+    ...LOOPBACK_HOSTS,
   ]);
+  assert.ok(rule.condition.requestDomains.includes("localhost"));
+  assert.ok(rule.condition.requestDomains.includes("127.0.0.1"));
+  assert.ok(rule.condition.requestDomains.includes("[::1]"));
   assert.deepStrictEqual(rule.condition.resourceTypes, ["xmlhttprequest"]);
   assert.deepStrictEqual(rule.action, {
     type: "modifyHeaders",
@@ -120,12 +121,45 @@ test("bundled static fallback rule stays restricted to loopback request hosts", 
     ),
   );
   assert.ok(Array.isArray(rules) && rules.length > 0);
+  const allowed = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
   for (const rule of rules) {
     for (const host of rule.condition.requestDomains || []) {
       assert.ok(
-        host === "localhost" || host === "127.0.0.1",
+        allowed.has(host),
         `static rule request host ${host} must be loopback`,
       );
     }
+    assert.ok(
+      (rule.condition.requestDomains || []).includes("127.0.0.1"),
+      "static rule must still cover 127.0.0.1",
+    );
+  }
+});
+
+test("ensureLoopbackCorsRuleSoon passes the registration result through", async () => {
+  const originalChrome = globalThis.chrome;
+  resetLoopbackCorsRuleForTests();
+  delete globalThis.chrome;
+  try {
+    assert.strictEqual(await ensureLoopbackCorsRuleSoon(50), "unsupported");
+  } finally {
+    globalThis.chrome = originalChrome;
+    resetLoopbackCorsRuleForTests();
+  }
+});
+
+test("ensureLoopbackCorsRuleSoon times out instead of blocking the first request", async () => {
+  const originalChrome = globalThis.chrome;
+  resetLoopbackCorsRuleForTests();
+  globalThis.chrome = {
+    declarativeNetRequest: {
+      updateSessionRules: () => new Promise(() => {}),
+    },
+  };
+  try {
+    assert.strictEqual(await ensureLoopbackCorsRuleSoon(20), "timeout");
+  } finally {
+    globalThis.chrome = originalChrome;
+    resetLoopbackCorsRuleForTests();
   }
 });

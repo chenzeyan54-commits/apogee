@@ -56,15 +56,15 @@ Content
 
 - **Node Version**: Node.js 22 or newer (.nvmrc pins 22).
 
-- **Commands** (run `install:extension`, `build`, `test`, `lint`, `format`, `dev`, `package` from root or inside apogee-extension. `format:check`, `build:chrome`, `build:firefox`, `start:*`, `lint:webext` only inside apogee-extension):
+- **Commands** (run `install:extension`, `build`, `test`, `lint`, `format`, `build:watch`, `package` from root or inside apogee-extension. `format:check`, `build:chrome`, `build:firefox`, `start:*`, `lint:webext` only inside apogee-extension):
 
   - `npm install`: Install dependencies.
 
-  - `npm run dev`: Watch mode. Rebuilds dist/chrome and dist/firefox on save.
+  - `npm run build:watch`: Watch mode. Rebuilds dist/chrome and dist/firefox on save.
 
   - `npm run build`: Build Chromium (dist/chrome) and Firefox (dist/firefox) packages.
 
-  - `npm test`: Run Node test suite (node --test).
+  - `npm test`: Run Node test suite with coverage (node --test --experimental-test-coverage).
 
   - `npm run lint`: Run ESLint check.
 
