@@ -1115,45 +1115,8 @@ function notifyJobFailed(err) {
   });
 }
 
-const SUMMARIZE_CONTEXT_MENU_ID = "apogee-summarize";
-const SUMMARIZE_SELECTION_CONTEXT_MENU_ID = "apogee-summarize-selection";
-
-if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
-  chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-      id: SUMMARIZE_CONTEXT_MENU_ID,
-      title: "Summarize this page",
-      contexts: ["page"],
-    });
-    chrome.contextMenus.create({
-      id: SUMMARIZE_SELECTION_CONTEXT_MENU_ID,
-      title: "Summarize selection",
-      contexts: ["selection"],
-    });
-  });
-}
-
 // Narrow the bundled loopback Origin-strip to this extension's non-tab requests where session rules are supported; loopback clients await the same helper before fetching, so this is only a fast track. Never rejects.
 ensureLoopbackCorsRule().catch(() => {});
-
-if (
-  typeof chrome !== "undefined" &&
-  chrome.contextMenus?.onClicked?.addListener
-) {
-  chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (!tab) return;
-    if (info.menuItemId === SUMMARIZE_CONTEXT_MENU_ID) {
-      runBackgroundSummarize(tab, { notifyOnFinish: true }).catch((err) =>
-        notifyJobFailed(err),
-      );
-    } else if (info.menuItemId === SUMMARIZE_SELECTION_CONTEXT_MENU_ID) {
-      runBackgroundSummarize(tab, {
-        notifyOnFinish: true,
-        selectionText: info.selectionText,
-      }).catch((err) => notifyJobFailed(err));
-    }
-  });
-}
 
 if (typeof chrome !== "undefined" && chrome.commands?.onCommand?.addListener) {
   chrome.commands.onCommand.addListener(async (command) => {
@@ -2285,6 +2248,16 @@ export function setupContextMenus() {
   if (typeof chrome === "undefined" || !chrome.contextMenus) return;
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
+      id: "apogee-summarize",
+      title: "Summarize this page",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: "apogee-summarize-selection",
+      title: "Summarize selection",
+      contexts: ["selection"],
+    });
+    chrome.contextMenus.create({
       id: "apogee-summarize-tabs",
       title: "Summarize with Apogee",
       contexts: ["page", "selection", "tab", "action"],
@@ -2297,7 +2270,6 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled) {
     setupContextMenus();
   });
 }
-setupContextMenus();
 
 export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   const signal = opts?.signal;
@@ -2598,9 +2570,23 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   return { summary: summaryResult, pageData };
 }
 
-if (typeof chrome !== "undefined" && chrome.contextMenus) {
+if (
+  typeof chrome !== "undefined" &&
+  chrome.contextMenus?.onClicked?.addListener
+) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === "apogee-summarize-tabs") {
+    if (info.menuItemId === "apogee-summarize") {
+      if (!tab) return;
+      runBackgroundSummarize(tab, { notifyOnFinish: true }).catch((err) =>
+        notifyJobFailed(err),
+      );
+    } else if (info.menuItemId === "apogee-summarize-selection") {
+      if (!tab) return;
+      runBackgroundSummarize(tab, {
+        notifyOnFinish: true,
+        selectionText: info.selectionText,
+      }).catch((err) => notifyJobFailed(err));
+    } else if (info.menuItemId === "apogee-summarize-tabs") {
       let targetTabs = [tab];
       if (typeof chrome.tabs?.query === "function") {
         const highlighted = await chrome.tabs.query({
