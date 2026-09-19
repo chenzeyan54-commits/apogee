@@ -35,6 +35,7 @@ import {
 import {
   formatSummaryAsJSON,
   formatSummaryAsMarkdown,
+  formatSummariesBulkAsJSON,
   safeExportFilename,
 } from "../lib/util/exportFormat.js";
 import {
@@ -235,6 +236,8 @@ const tokensPerSecBadgeAsk = document.getElementById("tokensPerSecBadgeAsk");
 const pastSummariesSection = document.getElementById("pastSummariesSection");
 const pastSummariesList = document.getElementById("pastSummariesList");
 const pastSummariesFilter = document.getElementById("pastSummariesFilter");
+const exportAllJsonBtn = document.getElementById("exportAllJsonBtn");
+const wordmarkEmpty = document.getElementById("wordmarkEmpty");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsBtn2 = document.getElementById("settingsBtn2");
 const openSidePanelBtns = document.querySelectorAll(".open-side-panel-btn");
@@ -991,11 +994,28 @@ function firstLineOf(text) {
     .replace(/^\d+[.)]\s+/, "");
 }
 
+// Build a normalized export item from a past summary cache entry and stored questions.
+function pastSummaryToExportItem(entry, text, stored = {}) {
+  const { format, language, model } = parseSummaryCacheKey(entry.s);
+  const suggestedQuestions =
+    entry?.p && Array.isArray(stored[entry.p]) ? stored[entry.p] : [];
+  return {
+    title: entry.t || "",
+    url: "",
+    model,
+    format,
+    language,
+    summary: text,
+    suggestedQuestions,
+  };
+}
+
 async function loadPastSummaries() {
   const { cacheOrder = [] } = await chrome.storage.local.get("cacheOrder");
   if (cacheOrder.length === 0) {
     pastSummariesSection.classList.add("hidden");
     pastSummariesList.innerHTML = "";
+    wordmarkEmpty?.classList.remove("hidden");
     return;
   }
 
@@ -1076,21 +1096,9 @@ async function loadPastSummaries() {
     copyJsonBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       try {
-        const { format, language, model } = parseSummaryCacheKey(entry.s);
         const stored = entry.p ? await chrome.storage.local.get(entry.p) : {};
-        const suggestedQuestions = Array.isArray(stored?.[entry.p])
-          ? stored[entry.p]
-          : [];
         copyToClipboard(
-          formatSummaryAsJSON({
-            title: entry.t || "",
-            url: "",
-            model,
-            format,
-            language,
-            summary: text,
-            suggestedQuestions,
-          }),
+          formatSummaryAsJSON(pastSummaryToExportItem(entry, text, stored)),
           copyJsonBtn,
         );
       } catch (err) {
@@ -1138,6 +1146,7 @@ async function loadPastSummaries() {
 
   const hasCards = pastSummariesList.children.length > 0;
   pastSummariesSection.classList.toggle("hidden", !hasCards);
+  wordmarkEmpty?.classList.toggle("hidden", hasCards);
 
   if (pastSummariesFilter) {
     pastSummariesFilter.value = "";
@@ -1276,6 +1285,47 @@ async function copyToClipboard(text, btn) {
     btn.innerHTML = original;
   }, 1500);
 }
+
+// Shared download step for the single and bulk JSON exports.
+function downloadTextFile({ filename, text, mimeType = "application/json" }) {
+  const blob = new Blob([text], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+// Bulk export (#244): one JSON file holding every past summary in
+// cacheOrder, oldest first. Entries without stored text are skipped, and
+// the source URL stays empty — cache keys hold a one-way hash of it.
+exportAllJsonBtn?.addEventListener("click", async () => {
+  try {
+    const { cacheOrder = [] } = await chrome.storage.local.get("cacheOrder");
+    const stored = await chrome.storage.local.get(
+      cacheOrder.flatMap((entry) => [entry?.s, entry?.p].filter(Boolean)),
+    );
+
+    const items = [];
+    for (const entry of cacheOrder) {
+      const text = entry?.s ? stored[entry.s] : "";
+      if (!text) continue;
+      items.push(pastSummaryToExportItem(entry, text, stored));
+    }
+    if (items.length === 0) return;
+
+    downloadTextFile({
+      filename: "apogee-summaries.json",
+      text: formatSummariesBulkAsJSON(items),
+    });
+  } catch (err) {
+    console.error("Export all summaries error:", err);
+  }
+});
+
 exportJsonBtn?.addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({
     active: true,
@@ -1305,21 +1355,10 @@ exportJsonBtn?.addEventListener("click", async () => {
     suggestedQuestions,
   });
 
-  const blob = new Blob([json], {
-    type: "application/json",
+  downloadTextFile({
+    filename: `${safeExportFilename(title)}.json`,
+    text: json,
   });
-
-  const objectUrl = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = objectUrl;
-  link.download = `${safeExportFilename(title)}.json`;
-
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-
-  URL.revokeObjectURL(objectUrl);
 });
 
 copyMarkdownBtn?.addEventListener("click", async () => {

@@ -29,30 +29,32 @@ export function formatSummaryAsMarkdown({
   parts.push(summary || "");
   return parts.join("\n\n").trim() + "\n";
 }
-export function formatSummaryAsJSON({
-  title,
-  url,
-  model,
-  format,
-  language,
-  summary,
-  suggestedQuestions = [],
-}) {
-  return JSON.stringify(
-    {
-      title: title || "",
-      url: url || "",
-      model: model || "",
-      format: format || "",
-      language: language || "",
-      summary: typeof summary === "string" ? summary : "",
-      suggestedQuestions: Array.isArray(suggestedQuestions)
-        ? suggestedQuestions
-        : [],
-    },
-    null,
-    2,
+export function formatSummaryAsJSON(item) {
+  return JSON.stringify(normalizeSummaryItem(item), null, 2);
+}
+
+// Shared shape for single and bulk JSON exports so the two stay
+// interchangeable. Not exported: reach it through the formatters.
+function normalizeSummaryItem(item) {
+  return {
+    title: item?.title || "",
+    url: item?.url || "",
+    model: item?.model || "",
+    format: item?.format || "",
+    language: item?.language || "",
+    summary: typeof item?.summary === "string" ? item.summary : "",
+    suggestedQuestions: Array.isArray(item?.suggestedQuestions)
+      ? item.suggestedQuestions
+      : [],
+  };
+}
+
+// Bulk export: one JSON file holding every past summary in cacheOrder.
+export function formatSummariesBulkAsJSON(summaries) {
+  const items = (Array.isArray(summaries) ? summaries : []).map((item) =>
+    normalizeSummaryItem(item ?? {}),
   );
+  return JSON.stringify(items, null, 2) + "\n";
 }
 
 // Page titles can contain characters that are illegal in file names
