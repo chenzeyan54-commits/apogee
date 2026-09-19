@@ -144,6 +144,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Format selection test with prettier ([95fe713](https://github.com/darshi1337/apogee/commit/95fe713ecf163fbb5cf9d5c436a74f08ff69dd29))
 - Cover happy-path capture and bound re-entry timer ([820b794](https://github.com/darshi1337/apogee/commit/820b7941903e218de3ef7579b0a4b96388cf4918))
 - Restore eager setup plus onStartup, use shared IDs ([898c81b](https://github.com/darshi1337/apogee/commit/898c81b838543705d601ce45446324bb72e75f84))
+- Handle extractor failures and URL variants (#309) ([842c5d7](https://github.com/darshi1337/apogee/commit/842c5d7a84c208809b5ff8bce7d2ca7e1acfad56))
 
 ### Security
 
