@@ -148,6 +148,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Bump adm-zip override to 0.6.1 for GHSA-7q85-xj36-vmfc ([6821665](https://github.com/darshi1337/apogee/commit/6821665916ad7c04b3e9eb0ec944af27a0bdd053))
 - Empty-state wordmark and bulk JSON export (#310) ([7142af0](https://github.com/darshi1337/apogee/commit/7142af07c1de5ad11e178e03b3e6753379e7fb97))
 - Defrag-style segmented download progress (#316) ([d45251a](https://github.com/darshi1337/apogee/commit/d45251ad2d8eba1a9ab8a06dfd2fd71138a377ed))
+- Gate extraction on denial, distinguish lookup failures (#304, #306) ([16b4459](https://github.com/darshi1337/apogee/commit/16b445905d8848e72b2f71903703b86aee71cb2e))
 
 ### Security
 
