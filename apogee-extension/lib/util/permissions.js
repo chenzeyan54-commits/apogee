@@ -3,6 +3,7 @@
 // Fail closed throughout: without the permissions API there is no prompt to
 // grant, so callers must treat access as denied rather than assuming the
 // gated fetch is allowed.
+import { UserFacingError } from "./userError.js";
 async function queryPermissionsApi(method, origins) {
   if (
     typeof chrome === "undefined" ||
@@ -108,6 +109,22 @@ export async function requestSiteAccess(url) {
 }
 
 /**
+ * Actionable blocked-permission message for the popup. Names the host so the
+ * user knows what is gated, and names the button that re-prompts (the
+ * permission request must run in the click gesture).
+ * @param {string} url Target webpage URL
+ * @returns {string}
+ */
+export function permissionBlockedMessage(url) {
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {}
+  const where = host ? ` ${host}` : " this site";
+  return `Apogee needs permission to read${where}. Click Summarize again and choose Allow when the browser asks.`;
+}
+
+/**
  * Checks whether optional host permissions are needed for a URL, and if so, prompts the user to grant them.
  * @param {string} url Target webpage URL
  * @returns {Promise<boolean>} True if permissions are already granted or were successfully granted by the user.
@@ -118,4 +135,15 @@ export async function ensurePermissionsForUrl(url) {
   const granted = await hasHostPermissions(origins);
   if (granted) return true;
   return await requestHostPermissions(origins);
+}
+
+/**
+ * Same gate as ensurePermissionsForUrl, but throws the actionable blocked
+ * message instead of returning false so denied callers cannot fall through
+ * to extraction and fail opaquely (#304). Must run within the user gesture.
+ * @param {string} url Target webpage URL
+ */
+export async function ensurePermissionsOrThrow(url) {
+  if (await ensurePermissionsForUrl(url)) return;
+  throw new UserFacingError(permissionBlockedMessage(url));
 }

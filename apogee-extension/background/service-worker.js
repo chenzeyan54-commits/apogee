@@ -1212,18 +1212,63 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
 
 const SPONSORBLOCK_CATEGORIES = ["sponsor", "selfpromo", "interaction"];
 
-export async function fetchSponsorBlockSegments(videoId) {
-  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId || "")) return [];
+// Distinguishable outcomes for skip-segment / subtitle lookups (#306):
+// callers previously saw [] for denied permission, network failure, and
+// genuinely-empty alike. Each lookup below reports which one happened via
+// its status field so denied/off, network errors, and empty stay distinct.
+export const SKIP_LOOKUP_STATUS = {
+  OK: "ok",
+  OFF: "off",
+  DENIED: "denied",
+  INVALID: "invalid",
+  NETWORK: "network-error",
+  EMPTY: "empty",
+};
+
+// Shared fetch/HTTP/JSON core for the lookup trio below: same timeout
+// fetch, same non-ok check, same JSON parse, only the label differs.
+// Returns { data } on success or { status: NETWORK } with a telemetry-safe
+// log (label + HTTP code / error name, never video ids or page content).
+async function fetchJsonWithStatus(url, options, label) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (err) {
+    console.warn(`${label} failed: network error.`, err?.name || "");
+    return { status: SKIP_LOOKUP_STATUS.NETWORK };
+  }
+  if (!res.ok) {
+    console.warn(`${label} failed: HTTP ${res.status}.`);
+    return { status: SKIP_LOOKUP_STATUS.NETWORK };
+  }
+  try {
+    return { data: await res.json() };
+  } catch {
+    console.warn(`${label} failed: invalid JSON response.`);
+    return { status: SKIP_LOOKUP_STATUS.NETWORK };
+  }
+}
+
+export async function fetchSponsorBlockSegmentsWithStatus(videoId) {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId || "")) {
+    return { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
+  }
 
   // "Stay fully local" means no SponsorBlock lookup at all; the uploader falls back to its local phrase heuristic.
   const { useSponsorBlock } = await getSettings();
-  if (useSponsorBlock === false || useSponsorBlock === "off") return [];
+  if (useSponsorBlock === false || useSponsorBlock === "off") {
+    console.info("SponsorBlock lookup skipped: Stay-fully-local is on.");
+    return { segments: [], status: SKIP_LOOKUP_STATUS.OFF };
+  }
 
   const hasPerm = await hasHostPermissions([
     "*://*.youtube.com/*",
     "https://sponsor.ajay.app/*",
   ]);
-  if (!hasPerm) return [];
+  if (!hasPerm) {
+    console.warn("SponsorBlock lookup skipped: host permission denied.");
+    return { segments: [], status: SKIP_LOOKUP_STATUS.DENIED };
+  }
 
   const bytes = new TextEncoder().encode(videoId);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -1237,27 +1282,21 @@ export async function fetchSponsorBlockSegments(videoId) {
   );
   const url = `https://sponsor.ajay.app/api/skipSegments/${prefix}?categories=${categories}`;
 
-  let res;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-  } catch {
-    return [];
-  }
-  if (!res.ok) return [];
-
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    return [];
-  }
+  const { data, status } = await fetchJsonWithStatus(
+    url,
+    { signal: AbortSignal.timeout(4000) },
+    "SponsorBlock lookup",
+  );
+  if (status) return { segments: [], status };
 
   const entry = Array.isArray(data)
     ? data.find((d) => d.videoID === videoId || d.hash === hashHex)
     : null;
-  if (!entry || !Array.isArray(entry.segments)) return [];
+  if (!entry || !Array.isArray(entry.segments)) {
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
+  }
 
-  return entry.segments
+  const segments = entry.segments
     .filter(
       (s) =>
         SPONSORBLOCK_CATEGORIES.includes(s.category) &&
@@ -1265,17 +1304,23 @@ export async function fetchSponsorBlockSegments(videoId) {
         s.segment.length === 2,
     )
     .map((s) => [s.segment[0], s.segment[1]]);
+  if (segments.length === 0) {
+    return { segments, status: SKIP_LOOKUP_STATUS.EMPTY };
+  }
+  return { segments, status: SKIP_LOOKUP_STATUS.OK };
 }
 
-export async function fetchBilibiliSubtitles({
+export async function fetchBilibiliSubtitlesWithStatus({
   aid,
   bvid,
   cid,
   preferredLang,
 }) {
-  if (!cid || (!aid && !bvid)) return [];
+  if (!cid || (!aid && !bvid))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
   const cidStr = String(cid);
-  if (!/^\d+$/.test(cidStr)) return [];
+  if (!/^\d+$/.test(cidStr))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
   const params = new URLSearchParams({ cid: cidStr });
   if (bvid && /^BV[0-9A-Za-z]{10}$/.test(bvid)) params.set("bvid", bvid);
   else if (aid && /^\d+$/.test(String(aid))) params.set("aid", String(aid));
@@ -1283,29 +1328,22 @@ export async function fetchBilibiliSubtitles({
     "*://*.bilibili.com/*",
     "*://*.hdslb.com/*",
   ]);
-  if (!hasPerm) return [];
-
-  let listRes;
-  try {
-    // Note: credentials: "include" is required for Bilibili's /x/player/v2 endpoint because Bilibili restricts subtitle list metadata to logged-in sessions. Cookies are strictly scoped to api.bilibili.com API requests on Bilibili pages.
-    listRes = await fetch(
-      `https://api.bilibili.com/x/player/v2?${params.toString()}`,
-      { credentials: "include", signal: AbortSignal.timeout(6000) },
-    );
-  } catch {
-    return [];
+  if (!hasPerm) {
+    console.warn("Bilibili subtitles skipped: host permission denied.");
+    return { segments: [], status: SKIP_LOOKUP_STATUS.DENIED };
   }
-  if (!listRes.ok) return [];
 
-  let listData;
-  try {
-    listData = await listRes.json();
-  } catch {
-    return [];
-  }
+  // Note: credentials: "include" is required for Bilibili's /x/player/v2 endpoint because Bilibili restricts subtitle list metadata to logged-in sessions. Cookies are strictly scoped to api.bilibili.com API requests on Bilibili pages.
+  const { data: listData, status: listStatus } = await fetchJsonWithStatus(
+    `https://api.bilibili.com/x/player/v2?${params.toString()}`,
+    { credentials: "include", signal: AbortSignal.timeout(6000) },
+    "Bilibili subtitles",
+  );
+  if (listStatus) return { segments: [], status: listStatus };
 
   const subtitles = listData?.data?.subtitle?.subtitles;
-  if (!Array.isArray(subtitles) || subtitles.length === 0) return [];
+  if (!Array.isArray(subtitles) || subtitles.length === 0)
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
 
   const langPrefix = (preferredLang || "").split("-")[0].toLowerCase();
   const chosen =
@@ -1314,37 +1352,28 @@ export async function fetchBilibiliSubtitles({
     ) || subtitles[0];
 
   let subUrl = chosen?.subtitle_url;
-  if (!subUrl) return [];
+  if (!subUrl) return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   if (subUrl.startsWith("//")) subUrl = `https:${subUrl}`;
   let host;
   try {
     host = new URL(subUrl).hostname.toLowerCase();
   } catch {
-    return [];
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   }
-  if (host !== "hdslb.com" && !host.endsWith(".hdslb.com")) return [];
+  if (host !== "hdslb.com" && !host.endsWith(".hdslb.com"))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
 
-  let subRes;
-  try {
-    // Subtitle track content on the hdslb.com CDN does not require session authentication, so credentials are explicitly omitted to restrict cookie scope.
-    subRes = await fetch(subUrl, {
-      credentials: "omit",
-      signal: AbortSignal.timeout(6000),
-    });
-  } catch {
-    return [];
-  }
-  if (!subRes.ok) return [];
-
-  let subData;
-  try {
-    subData = await subRes.json();
-  } catch {
-    return [];
-  }
+  // Subtitle track content on the hdslb.com CDN does not require session authentication, so credentials are explicitly omitted to restrict cookie scope.
+  const { data: subData, status: subStatus } = await fetchJsonWithStatus(
+    subUrl,
+    { credentials: "omit", signal: AbortSignal.timeout(6000) },
+    "Bilibili subtitle track",
+  );
+  if (subStatus) return { segments: [], status: subStatus };
 
   const body = subData?.body;
-  if (!Array.isArray(body)) return [];
+  if (!Array.isArray(body))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   // Bounded accumulation: stop at the segment cap and past the char budget
   // so a malformed track cannot bloat service-worker memory. Segments past
   // the budget are dropped, never partially kept, to keep start/text pairs
@@ -1361,7 +1390,10 @@ export async function fetchBilibiliSubtitles({
     segments.push({ start: Number(seg?.from) || 0, text });
     totalChars += text.length;
   }
-  return segments;
+  if (segments.length === 0) {
+    return { segments, status: SKIP_LOOKUP_STATUS.EMPTY };
+  }
+  return { segments, status: SKIP_LOOKUP_STATUS.OK };
 }
 
 async function generateLocalSuggestions(
@@ -1399,6 +1431,7 @@ async function runSuggestQuestionsJob(payload) {
   startKeepAlive();
 
   let questions = [];
+  let suggestStatus = SKIP_LOOKUP_STATUS.EMPTY;
   try {
     try {
       if (providerType === PROVIDERS.LLAMACPP) {
@@ -1446,8 +1479,15 @@ async function runSuggestQuestionsJob(payload) {
         });
         questions = resp?.questions || [];
       }
-    } catch {
+      suggestStatus =
+        questions.length > 0 ? SKIP_LOOKUP_STATUS.OK : SKIP_LOOKUP_STATUS.EMPTY;
+    } catch (err) {
       questions = [];
+      suggestStatus = SKIP_LOOKUP_STATUS.NETWORK;
+      // Telemetry-safe: provider type + error name only, never title/summary.
+      console.warn(
+        `Suggest-questions unavailable: ${providerType || "unknown"} ${err?.name || "Error"}.`,
+      );
     }
 
     // Generating the questions takes its own trip through the model, so the setting gets one more look before this write too.
@@ -1465,6 +1505,7 @@ async function runSuggestQuestionsJob(payload) {
         type: "suggested-prompts-ready",
         promptsCacheKey,
         questions,
+        status: suggestStatus,
       })
       .catch(() => {});
   } catch (err) {
@@ -1475,6 +1516,7 @@ async function runSuggestQuestionsJob(payload) {
           type: "suggested-prompts-ready",
           promptsCacheKey,
           questions,
+          status: suggestStatus,
         })
         .catch(() => {});
     } catch {}
@@ -2098,16 +2140,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "sponsorblock-segments": {
-          const segments = message.payload?.videoId
-            ? await fetchSponsorBlockSegments(message.payload.videoId)
-            : [];
-          sendResponse({ segments });
+          const { segments, status } = message.payload?.videoId
+            ? await fetchSponsorBlockSegmentsWithStatus(message.payload.videoId)
+            : { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
+          sendResponse({ segments, status });
           break;
         }
 
         case "bilibili-subtitles": {
-          const segments = await fetchBilibiliSubtitles(message.payload || {});
-          sendResponse({ segments });
+          const { segments, status } = await fetchBilibiliSubtitlesWithStatus(
+            message.payload || {},
+          );
+          sendResponse({ segments, status });
           break;
         }
 

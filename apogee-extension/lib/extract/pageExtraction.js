@@ -1,5 +1,8 @@
 import { UserFacingError } from "../util/userError.js";
-import { requestSiteAccess } from "../util/permissions.js";
+import {
+  requestSiteAccess,
+  permissionBlockedMessage,
+} from "../util/permissions.js";
 import { MAX_UPLOAD_FILE_BYTES } from "./fileLimits.js";
 
 // Pages the browser itself refuses to let extensions script, even though they are ordinary https URLs. Without this the raw engine error ("The extensions gallery cannot be scripted.") leaks into the popup.
@@ -165,10 +168,9 @@ export async function extractFromActiveTab(tab) {
           });
         }
       } else if (url && isHostAccessDenied(e)) {
-        throw new UserFacingError(
-          "Apogee needs permission to read this site. Click Summarize again and choose Allow when the browser asks.",
-          { cause: e },
-        );
+        throw new UserFacingError(permissionBlockedMessage(url), {
+          cause: e,
+        });
       } else {
         throw new UserFacingError(injectionErrorMessage(e), { cause: e });
       }
