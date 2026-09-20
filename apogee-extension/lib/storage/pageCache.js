@@ -26,6 +26,14 @@ async function instructionsSuffix(customInstructions) {
   return `:i${(await sha256Hex(extra)).slice(0, 12)}`;
 }
 
+// Same reasoning as instructionsSuffix, appended after it - a per-page focus
+// keyword changes the generated text just as much as custom instructions do.
+async function focusKeywordSuffix(focusKeyword) {
+  const extra = (focusKeyword || "").trim();
+  if (!extra) return "";
+  return `:k${(await sha256Hex(extra)).slice(0, 12)}`;
+}
+
 function translationEngineKey(translationEngine = TRANSLATION_ENGINES.OPUS) {
   return translationEngine === TRANSLATION_ENGINES.OPUS
     ? TRANSLATION_ENGINES.OPUS
@@ -39,8 +47,9 @@ export async function getSummaryCacheKey(
   lang = "auto",
   customInstructions = "",
   translationEngine = TRANSLATION_ENGINES.OPUS,
+  focusKeyword = "",
 ) {
-  return `summary:${fmt}:${lang}:${model}:${translationEngineKey(translationEngine)}:${await hashUrl(url)}${await instructionsSuffix(customInstructions)}`;
+  return `summary:${fmt}:${lang}:${model}:${translationEngineKey(translationEngine)}:${await hashUrl(url)}${await instructionsSuffix(customInstructions)}${await focusKeywordSuffix(focusKeyword)}`;
 }
 
 // Inverse of getSummaryCacheKey for display/export: pulls the response
@@ -55,6 +64,7 @@ export function parseSummaryCacheKey(cacheKey) {
     return fallback;
   }
   const rest = cacheKey
+    .replace(/:k[0-9a-f]{12}$/, "")
     .replace(/:i[0-9a-f]{12}$/, "")
     .replace(/:[0-9a-f]{32}$/, "")
     .replace(
@@ -73,8 +83,9 @@ export async function getPromptsCacheKey(
   lang = "auto",
   customInstructions = "",
   translationEngine = TRANSLATION_ENGINES.OPUS,
+  focusKeyword = "",
 ) {
-  return `suggested-prompts:${fmt}:${lang}:${model}:${translationEngineKey(translationEngine)}:${await hashUrl(url)}${await instructionsSuffix(customInstructions)}`;
+  return `suggested-prompts:${fmt}:${lang}:${model}:${translationEngineKey(translationEngine)}:${await hashUrl(url)}${await instructionsSuffix(customInstructions)}${await focusKeywordSuffix(focusKeyword)}`;
 }
 export async function getContentCacheKey(url) {
   return `content:${await hashUrl(url)}`;

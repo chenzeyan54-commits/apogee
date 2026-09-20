@@ -397,6 +397,7 @@ async function runSummarize(eng, pending, emit, signal) {
       model: pending.model,
       language,
       customInstructions,
+      focusKeyword: pending.focusKeyword,
       signal,
     },
     {
@@ -470,6 +471,7 @@ async function runTransformersJob(
             language,
             customInstructions,
             isSelection: pending.isSelection,
+            focusKeyword: pending.focusKeyword,
             signal,
           },
           {

@@ -39,6 +39,7 @@ export async function* summarizeText(
     language,
     customInstructions,
     isSelection = false,
+    focusKeyword = "",
   },
   {
     chunkTextFn = chunkBySections,
@@ -93,7 +94,15 @@ export async function* summarizeText(
     {
       buildSingle: (chunk) =>
         withCustomInstructions(
-          buildPrompt(title, url, chunk, mode, undefined, isSelection),
+          buildPrompt(
+            title,
+            url,
+            chunk,
+            mode,
+            undefined,
+            isSelection,
+            focusKeyword,
+          ),
           customInstructions,
         ),
       buildMap: isDiscussion
@@ -120,6 +129,7 @@ export async function* summarizeText(
                 partials.join("\n"),
                 mode,
                 scaledFor(partials),
+                focusKeyword,
               ),
               customInstructions,
             ),

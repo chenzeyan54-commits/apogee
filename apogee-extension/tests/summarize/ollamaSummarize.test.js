@@ -225,6 +225,107 @@ test("summarizeText appends custom instructions to the final summary prompt only
   assert.match(reducePrompt, /Answer in a formal tone\./);
 });
 
+test("summarizeText applies a focus keyword to both the single-chunk prompt and the final reduce/synthesis prompt, not the per-chunk map passes (#161)", async () => {
+  const prompts = [];
+  async function* chatStreamFn(_host, _model, prompt) {
+    prompts.push(prompt);
+    yield "x";
+  }
+
+  // Single-chunk (short) path: goes straight through buildSingle.
+  await collect(
+    summarizeText(
+      {
+        text: "short article",
+        title: "Doc",
+        url: "https://example.com",
+        mode: "bullets",
+        focusKeyword: "battery pricing",
+      },
+      { chunkTextFn: (x) => [x], chatStreamFn },
+    ),
+  );
+  assert.match(prompts[0], /READER'S FOCUS/);
+  assert.match(prompts[0], /battery pricing/);
+
+  // Long (multi-chunk) path: focus keyword must reach the final synthesis
+  // reduce, but not the neutral per-chunk extraction passes.
+  prompts.length = 0;
+  await collect(
+    summarizeText(
+      {
+        text: "part A part B",
+        title: "Doc",
+        url: "https://example.com",
+        mode: "bullets",
+        focusKeyword: "battery pricing",
+      },
+      { chunkTextFn: () => ["part A", "part B"], chatStreamFn },
+    ),
+  );
+  const mapPrompts = prompts.slice(0, -1);
+  const reducePrompt = prompts[prompts.length - 1];
+  for (const p of mapPrompts) {
+    assert.doesNotMatch(p, /READER'S FOCUS/);
+  }
+  assert.match(reducePrompt, /READER'S FOCUS/);
+  assert.match(reducePrompt, /battery pricing/);
+});
+
+test("summarizeText ignores a focus keyword for discussion-type pages (#161)", async () => {
+  const prompts = [];
+  async function* chatStreamFn(_host, _model, prompt) {
+    prompts.push(prompt);
+    yield "note";
+  }
+
+  await collect(
+    summarizeText(
+      {
+        text: "Reddit discussion\n\nTitle: T\n\nComments (path [n.n] shows the reply tree):\n[1] a: hi",
+        title: "T",
+        url: "https://reddit.com/r/x/comments/1/",
+        mode: "bullets",
+        type: "reddit",
+        focusKeyword: "battery pricing",
+      },
+      { chunkTextFn: (x) => [x], chatStreamFn },
+    ),
+  );
+
+  for (const p of prompts) {
+    assert.doesNotMatch(p, /READER'S FOCUS/);
+    assert.doesNotMatch(p, /battery pricing/);
+  }
+});
+
+test("summarizeText ignores a focus keyword for video pages (#161)", async () => {
+  const prompts = [];
+  async function* chatStreamFn(_host, _model, prompt) {
+    prompts.push(prompt);
+    yield "brief";
+  }
+
+  await collect(
+    summarizeText(
+      {
+        text: "[0:00] hello world",
+        title: "A Video",
+        url: "https://youtube.com/watch?v=abc",
+        mode: "sentences",
+        type: "youtube",
+        focusKeyword: "battery pricing",
+      },
+      { chunkTextFn: () => ["[0:00] hello world"], chatStreamFn },
+    ),
+  );
+
+  for (const p of prompts) {
+    assert.doesNotMatch(p, /READER'S FOCUS/);
+    assert.doesNotMatch(p, /battery pricing/);
+  }
+});
+
 test("discussionPostExcerpt pulls the Post body out of extracted discussion content, empty for link posts", () => {
   const withPost =
     "Reddit discussion\n\nTitle: Foo\nr/bar\n\nPost:\nThis is the self text body.\n\nComments (path [n.n] shows the reply tree):\n[1] a: hi";

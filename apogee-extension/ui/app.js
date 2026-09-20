@@ -139,8 +139,26 @@ if (isSidePanelSurface) {
       if (activeInfo?.tabId) {
         connectSidePanelPort(activeInfo.tabId);
       }
+      // The side panel is one persistent document that survives a tab
+      // switch, so a focus keyword left over from the previous page would
+      // otherwise silently steer the next page's summary too.
+      if (focusKeywordInput) focusKeywordInput.value = "";
     });
   }
+}
+
+// Same reasoning as the tab-switch reset above, for navigating the same tab
+// to a new URL without switching tabs at all. Not gated behind
+// isSidePanelSurface: a plain popup could in principle stay open across a
+// page-initiated navigation too. changeInfo.url is only present on the one
+// update event that actually carries a new URL, not every status-change
+// event during a load, and re-summarizing the same page never fires this
+// (resummarizeBtn doesn't navigate the tab), so the value is kept then.
+if (typeof chrome.tabs?.onUpdated === "function") {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (tabId !== activeTabId || !changeInfo.url) return;
+    if (focusKeywordInput) focusKeywordInput.value = "";
+  });
 }
 
 function closeTransientSurface() {
@@ -184,6 +202,7 @@ function setSidePanelButtons({ panelOpen, available }) {
 const summarizeBtn = document.getElementById("summarizeBtn");
 const summarizeSelectionBtn = document.getElementById("summarizeSelectionBtn");
 const summarizeShortcutHint = document.getElementById("summarizeShortcutHint");
+const focusKeywordInput = document.getElementById("focusKeywordInput");
 const summaryText = document.getElementById("summaryText");
 const cancelSummarizeBtn = document.getElementById("cancelSummarizeBtn");
 const resummarizeBtn = document.getElementById("resummarizeBtn");
@@ -694,7 +713,25 @@ const EXTRACTOR_INFO = {
   pdf: { label: "PDF", icon: "filetext" },
 };
 
+// Discussion threads, video, and multi-tab pages don't go through the
+// keyword-focus prompt path (see lib/summarize/ollamaSummarize.js) - a
+// visible input that silently does nothing is worse than no input, so it's
+// hidden rather than just disabled. Called from updateExtractorChip so every
+// site that resolves a page's type stays in sync automatically.
+function updateFocusKeywordAvailability(pageData) {
+  if (!focusKeywordInput) return;
+  const type = pageData?.type;
+  const hide =
+    isVideoType(type) ||
+    type === "hackernews" ||
+    type === "reddit" ||
+    type === "stackoverflow" ||
+    type === "multi-tab";
+  focusKeywordInput.classList.toggle("hidden", hide);
+}
+
 function updateExtractorChip(pageData) {
+  updateFocusKeywordAvailability(pageData);
   const type = pageData?.isPdf ? "pdf" : pageData?.type;
   const info = EXTRACTOR_INFO[type];
   const chips = [
@@ -1523,6 +1560,7 @@ async function summarizeActivePage() {
   setLoadingIndicator(summaryText, randomSummarizeVerb());
 
   const jobId = `summary-${crypto.randomUUID()}`;
+  const focusKeyword = (focusKeywordInput?.value || "").trim();
   try {
     const [tab] = await chrome.tabs.query({
       active: true,
@@ -1571,6 +1609,7 @@ async function summarizeActivePage() {
       settings.summaryLanguage,
       settings.customInstructions,
       settings.translationEngine,
+      focusKeyword,
     );
     const promptsCacheKey = await getPromptsCacheKey(
       tab.url,
@@ -1579,6 +1618,7 @@ async function summarizeActivePage() {
       settings.summaryLanguage,
       settings.customInstructions,
       settings.translationEngine,
+      focusKeyword,
     );
     const finalize = {
       cacheKey,
@@ -1625,6 +1665,7 @@ async function summarizeActivePage() {
         mode: settings.responseFormat,
         language: settings.summaryLanguage,
         translationEngine: settings.translationEngine,
+        focusKeyword,
         finalize,
         onStats: (rate) => setTokensPerSecBadge(tokensPerSecBadgeSummary, rate),
       }));
@@ -1637,6 +1678,7 @@ async function summarizeActivePage() {
         type: pageData.type,
         language: settings.summaryLanguage,
         translationEngine: settings.translationEngine,
+        focusKeyword,
         finalize,
         onStats: (rate) => setTokensPerSecBadge(tokensPerSecBadgeSummary, rate),
       }));
