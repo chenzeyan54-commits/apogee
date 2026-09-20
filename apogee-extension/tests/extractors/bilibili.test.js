@@ -252,7 +252,19 @@ test("extractBilibili gracefully handles sendMessage failure", async () => {
   const result = await extract({ chromeStub });
 
   assert.strictEqual(result.type, "bilibili");
-  assert.match(result.content, /\(No subtitles\/captions available/);
+  assert.match(result.content, /Subtitles unavailable: network error/);
+});
+
+test("extractBilibili distinguishes denied permission from empty subtitles (#306)", async () => {
+  const chromeStub = {
+    runtime: { sendMessage: async () => ({ segments: [], status: "denied" }) },
+  };
+
+  const result = await extract({ chromeStub });
+
+  assert.strictEqual(result.type, "bilibili");
+  assert.match(result.content, /permission to read Bilibili was denied/);
+  assert.match(result.content, /Click Summarize again and choose Allow/);
 });
 
 test("biliFormatTimestamp formats hours correctly in transcript markers", async () => {

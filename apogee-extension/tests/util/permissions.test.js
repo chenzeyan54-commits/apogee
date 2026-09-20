@@ -6,6 +6,8 @@ import {
   requestHostPermissions,
   getOptionalOriginsForUrl,
   ensurePermissionsForUrl,
+  ensurePermissionsOrThrow,
+  permissionBlockedMessage,
   siteOriginsForUrl,
   requestSiteAccess,
 } from "../../lib/util/permissions.js";
@@ -184,6 +186,43 @@ test("ensurePermissionsForUrl fails closed when the permissions API is absent (#
       "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     );
     assert.strictEqual(result, false);
+  } finally {
+    globalThis.chrome = originalChrome;
+  }
+});
+
+test("permissionBlockedMessage names the host and the re-prompt button (#304)", () => {
+  const msg = permissionBlockedMessage(
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  );
+  assert.match(msg, /www\.youtube\.com/);
+  assert.match(msg, /Click Summarize again and choose Allow/);
+  assert.match(
+    permissionBlockedMessage("not a url"),
+    /Click Summarize again and choose Allow/,
+  );
+});
+
+test("ensurePermissionsOrThrow resolves on grant and throws the blocked message on denial (#304)", async () => {
+  const originalChrome = globalThis.chrome;
+  globalThis.chrome = {
+    permissions: {
+      contains(_opts, callback) {
+        callback(false);
+      },
+      request({ origins }, callback) {
+        callback(origins.includes("*://*.bilibili.com/*"));
+      },
+    },
+  };
+  try {
+    await ensurePermissionsOrThrow(
+      "https://www.bilibili.com/video/BV1xx411c7mD",
+    );
+    await assert.rejects(
+      ensurePermissionsOrThrow("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+      /www\.youtube\.com.*Click Summarize again and choose Allow/s,
+    );
   } finally {
     globalThis.chrome = originalChrome;
   }

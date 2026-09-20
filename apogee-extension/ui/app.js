@@ -87,7 +87,7 @@ import {
   activateSelectionCapture,
   MIN_SELECTION_LENGTH,
 } from "../lib/extract/selection.js";
-import { ensurePermissionsForUrl } from "../lib/util/permissions.js";
+import { ensurePermissionsOrThrow } from "../lib/util/permissions.js";
 import {
   setLinkifyOriginFromUrl,
   setMarkdownHtml,
@@ -787,7 +787,7 @@ async function getPageData(tab) {
   }
 
   if (tab?.url) {
-    await ensurePermissionsForUrl(tab.url);
+    await ensurePermissionsOrThrow(tab.url);
   }
   const pageData = await extractFromActiveTab(tab);
   if (pageData?.isPdf) {
@@ -1743,7 +1743,7 @@ async function summarizeActivePage() {
       let pdfContent = pageData.content;
       if (!pdfContent) {
         if (tab?.url) {
-          await ensurePermissionsForUrl(tab.url);
+          await ensurePermissionsOrThrow(tab.url);
         }
         setLoadingIndicator(summaryText, "Extracting PDF");
         try {

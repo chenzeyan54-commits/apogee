@@ -260,7 +260,7 @@ test("extraction guides when the site grant is declined", async () => {
   try {
     await assert.rejects(
       extractFromActiveTab({ id: 8, url: "https://github.com/a/b" }),
-      /needs permission to read this site/,
+      /needs permission to read github\.com.*Click Summarize again and choose Allow/s,
     );
   } finally {
     globalThis.chrome = originalChrome;

@@ -60,9 +60,12 @@ async function fetchBiliSubtitles({ aid, bvid, cid }) {
         preferredLang: navigator.language || "zh",
       },
     });
-    return Array.isArray(resp?.segments) ? resp.segments : [];
+    return {
+      segments: Array.isArray(resp?.segments) ? resp.segments : [],
+      status: typeof resp?.status === "string" ? resp.status : "empty",
+    };
   } catch {
-    return [];
+    return { segments: [], status: "network-error" };
   }
 }
 
@@ -88,7 +91,9 @@ async function extractBilibili() {
   const aid = videoData.aid || state?.aid || "";
   const bvid = videoData.bvid || state?.bvid || "";
 
-  const segments = cid ? await fetchBiliSubtitles({ aid, bvid, cid }) : [];
+  const { segments, status } = cid
+    ? await fetchBiliSubtitles({ aid, bvid, cid })
+    : { segments: [], status: "empty" };
   const transcript = buildBiliTranscript(segments);
   const lastAvailableSeconds = segments.length
     ? segments[segments.length - 1].start
@@ -103,9 +108,17 @@ async function extractBilibili() {
   if (channel) content += `\nUploader: ${channel}\n`;
   if (duration) content += `\nDuration: ${duration}\n`;
   if (cleanedDescription) content += `\nDescription:\n${cleanedDescription}\n`;
-  content += transcript
-    ? `\nLast transcript timestamp: ${formatVideoTimestamp(lastAvailableSeconds)} (${Math.floor(lastAvailableSeconds)}s)\n\nTranscript:\n${transcript}\n`
-    : "\n(No subtitles/captions available for this video.)\n";
+  if (transcript) {
+    content += `\nLast transcript timestamp: ${formatVideoTimestamp(lastAvailableSeconds)} (${Math.floor(lastAvailableSeconds)}s)\n\nTranscript:\n${transcript}\n`;
+  } else if (status === "denied") {
+    content +=
+      "\n(Subtitles unavailable: permission to read Bilibili was denied. Click Summarize again and choose Allow to enable subtitles.)\n";
+  } else if (status === "network-error") {
+    content +=
+      "\n(Subtitles unavailable: network error fetching subtitles. Check your connection and try again.)\n";
+  } else {
+    content += "\n(No subtitles/captions available for this video.)\n";
+  }
 
   return {
     type: "bilibili",
