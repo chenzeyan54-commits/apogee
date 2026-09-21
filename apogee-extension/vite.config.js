@@ -61,11 +61,6 @@ function copyStaticPlugin(targetBrowser) {
       cpSync(resolve(__dirname, "_locales"), resolve(dist, "_locales"), {
         recursive: true,
       });
-
-      cpSync(
-        resolve(__dirname, "../docs/assets/pixel-dissolve.svg"),
-        resolve(dist, "assets/pixel-dissolve.svg"),
-      );
     },
   };
 }
