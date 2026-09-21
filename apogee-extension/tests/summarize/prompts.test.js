@@ -223,6 +223,26 @@ test("buildSummaryPrompt and buildSynthesisPrompt omit the focus clause when no 
   assert.doesNotMatch(synthesisNoArg, /READER'S FOCUS/);
 });
 
+test("buildExtractNotesPrompt keeps focus mentions so map-reduce synthesis has material (#161)", () => {
+  const notes = buildExtractNotesPrompt(
+    "T",
+    "chunk body",
+    0,
+    3,
+    "battery pricing",
+  );
+  assert.match(notes, /READER'S FOCUS:/);
+  assert.match(notes, /battery pricing/);
+  assert.match(notes, /even a passing mention/);
+
+  const noArg = buildExtractNotesPrompt("T", "chunk body", 0, 3);
+  assert.doesNotMatch(noArg, /READER'S FOCUS/);
+  assert.strictEqual(
+    noArg,
+    buildExtractNotesPrompt("T", "chunk body", 0, 3, "   "),
+  );
+});
+
 test("a focus keyword clause lands before custom instructions in the composed prompt (#161)", () => {
   const p = withCustomInstructions(
     buildSummaryPrompt(

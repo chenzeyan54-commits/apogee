@@ -113,7 +113,7 @@ export function fenceQuestion(question) {
 export const FOCUS_KEYWORD_MAX_CHARS = 200;
 
 export function fenceFocusKeyword(focusKeyword) {
-  return `${START_FENCE}\n${sanitizePromptField(focusKeyword, FOCUS_KEYWORD_MAX_CHARS)}\n${END_FENCE}`;
+  return fenceField(focusKeyword, FOCUS_KEYWORD_MAX_CHARS);
 }
 
 const INJECTION_RULE =
@@ -144,7 +144,7 @@ function focusKeywordClause(focusKeyword) {
     "READER'S FOCUS:",
     "The reader (not the article) asked the summary to focus on the following topic(s), enclosed below:",
     fenceFocusKeyword(focusKeyword),
-    "- Where the article covers these topics, give them more attention and detail than you otherwise would.",
+    "- Open with the reader's focus topics where the article covers them: make them the first substantive point(s), then cover the rest.",
     "- Do NOT invent information about these topics that isn't in the article just to satisfy this request.",
     "- Do NOT omit other clearly important facts from the article entirely just because they don't relate to these topics - this narrows emphasis, it does not replace the summary.",
   ];
@@ -274,7 +274,14 @@ export function buildSummaryPrompt(
   ].join("\n");
 }
 
-export function buildExtractNotesPrompt(title, chunk, chunkIndex, chunkTotal) {
+export function buildExtractNotesPrompt(
+  title,
+  chunk,
+  chunkIndex,
+  chunkTotal,
+  focusKeyword = "",
+) {
+  const focusLines = focusKeywordClause(focusKeyword);
   return [
     "You are Apogee, extracting the key information from one part of a document.",
     "",
@@ -284,9 +291,18 @@ export function buildExtractNotesPrompt(title, chunk, chunkIndex, chunkTotal) {
     INJECTION_RULE,
     '- One point per line, each starting with "- ".',
     "- Capture facts, findings, arguments, events, names, and numbers - keep concrete specifics, do not generalize them away.",
+    // A later synthesis step can only emphasize focus topics the notes kept:
+    // without this, chunk notes drop passing mentions as trivia and the
+    // focus clause at synthesis has nothing to work with (#161).
+    ...(focusLines.length
+      ? [
+          "- Keep every point that touches the reader's focus topics below, even a passing mention - do not drop them as minor detail.",
+        ]
+      : []),
     "- Stay strictly grounded in this part's text; do NOT invent or infer beyond it.",
     "- IGNORE promotional or non-substantive material (ads, sponsor reads, calls to action, navigation, boilerplate).",
     "- Output only the list: no preamble, no heading, no conclusion.",
+    ...focusLines,
     "",
     "DOCUMENT TITLE:",
     fenceTitle(title),

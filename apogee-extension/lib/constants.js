@@ -120,12 +120,6 @@ const DEFAULT_SUMMARY_LANGUAGE = "en";
 
 export const CUSTOM_INSTRUCTIONS_MAX_CHARS = 2000;
 
-// Per-page focus keyword (#161): a word or short phrase, not a paragraph -
-// deliberately short so it stays a "focus", not a second custom
-// instructions field. Matches lib/summarize/prompts.js's own cap, which is
-// the layer that actually enforces it; this one is just the UI's maxlength.
-export const FOCUS_KEYWORD_MAX_CHARS = 200;
-
 export const PRIVATE_HOSTS_MAX_CHARS = 1000;
 
 // Model-name free text (llama.cpp server model, Ollama tag override). Real

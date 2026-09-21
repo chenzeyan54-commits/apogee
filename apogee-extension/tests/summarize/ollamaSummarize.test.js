@@ -225,7 +225,7 @@ test("summarizeText appends custom instructions to the final summary prompt only
   assert.match(reducePrompt, /Answer in a formal tone\./);
 });
 
-test("summarizeText applies a focus keyword to both the single-chunk prompt and the final reduce/synthesis prompt, not the per-chunk map passes (#161)", async () => {
+test("summarizeText applies a focus keyword to the single-chunk prompt, the per-chunk map passes, and the final reduce/synthesis prompt (#161)", async () => {
   const prompts = [];
   async function* chatStreamFn(_host, _model, prompt) {
     prompts.push(prompt);
@@ -248,8 +248,10 @@ test("summarizeText applies a focus keyword to both the single-chunk prompt and 
   assert.match(prompts[0], /READER'S FOCUS/);
   assert.match(prompts[0], /battery pricing/);
 
-  // Long (multi-chunk) path: focus keyword must reach the final synthesis
-  // reduce, but not the neutral per-chunk extraction passes.
+  // Long (multi-chunk) path: focus keyword must reach the per-chunk map
+  // passes too, so passing mentions survive into the notes for the final
+  // synthesis to emphasize. Without this, synthesis focuses on notes that
+  // dropped the topic as trivia.
   prompts.length = 0;
   await collect(
     summarizeText(
@@ -266,7 +268,8 @@ test("summarizeText applies a focus keyword to both the single-chunk prompt and 
   const mapPrompts = prompts.slice(0, -1);
   const reducePrompt = prompts[prompts.length - 1];
   for (const p of mapPrompts) {
-    assert.doesNotMatch(p, /READER'S FOCUS/);
+    assert.match(p, /READER'S FOCUS/);
+    assert.match(p, /even a passing mention/);
   }
   assert.match(reducePrompt, /READER'S FOCUS/);
   assert.match(reducePrompt, /battery pricing/);

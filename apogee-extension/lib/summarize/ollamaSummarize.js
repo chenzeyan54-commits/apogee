@@ -107,7 +107,8 @@ export async function* summarizeText(
         ),
       buildMap: isDiscussion
         ? (chunk, i) => buildPrompt(title, url, withPostContext(chunk, i), mode)
-        : (chunk, i, total) => buildExtractNotesPrompt(title, chunk, i, total),
+        : (chunk, i, total) =>
+            buildExtractNotesPrompt(title, chunk, i, total, focusKeyword),
       buildReduce: isDiscussion
         ? (partials) =>
             withCustomInstructions(
