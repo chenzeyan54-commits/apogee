@@ -6,9 +6,11 @@ import {
   isSafeMarkdownHref,
   renderMarkdown,
   renderStoredSummaryMarkdown,
+  resolveNavigableHttpUrl,
   sanitizeMarkdownHtml,
   setLinkifyOriginFromUrl,
   setLinkifyPageHostForTests,
+  stripLeadingSummaryHeading,
 } from "../../lib/util/markdown.js";
 
 function resetLinkify() {
@@ -61,6 +63,29 @@ test("private-use placeholder marks in input cannot inject links (#187)", () => 
   );
   assert.ok(!html.includes("undefined"), "missing link index leaked undefined");
   assert.ok(html.includes("<a href="), "genuine link still renders");
+});
+
+test("ascii link tokens in input cannot hijack real links (#294)", () => {
+  resetLinkify();
+  const html = renderMarkdown(
+    "@@APOGEE-LINK-0@@\n[real](https://www.youtube.com/watch?v=dQw4w9WgXcQ)",
+  );
+  assert.ok(html.includes("<a href="), "genuine link still renders");
+  assert.ok(
+    !html.includes("@@APOGEE-LINK-"),
+    "typed token is stripped, never expanded",
+  );
+  assert.ok(
+    (html.match(/<a href=/g) || []).length === 1,
+    "exactly one link renders",
+  );
+});
+
+test("literal PUA marks are stripped, not expanded (#294)", () => {
+  resetLinkify();
+  const html = renderMarkdown("a\uE000b");
+  assert.ok(!html.includes("\uE000"), "raw PUA mark is stripped");
+  assert.ok(html.includes("ab"), "surrounding text survives");
 });
 
 test("linkify allow-list: same-origin and youtube/bilibili only (#187)", () => {
@@ -172,4 +197,85 @@ test("isSafeMarkdownHref rejects encoded breakouts and non-http schemes (#187)",
   assert.strictEqual(isSafeMarkdownHref("https://x/a b"), false);
   assert.strictEqual(isSafeMarkdownHref("https://x/<script>"), false);
   assert.strictEqual(isSafeMarkdownHref("not a url"), false);
+});
+
+test("resolveNavigableHttpUrl rejects javascript:/data: hrefs before navigation (#266)", () => {
+  const page = "https://example.com/article";
+  for (const href of [
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    "  javascript:alert(1)",
+    "java\tscript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "DATA:text/html,hi",
+    "vbscript:msgbox(1)",
+    "blob:https://example.com/uuid",
+    "file:///etc/passwd",
+  ]) {
+    assert.strictEqual(
+      resolveNavigableHttpUrl(href, page),
+      null,
+      `must not navigate: ${JSON.stringify(href)}`,
+    );
+  }
+});
+
+test("resolveNavigableHttpUrl allows http(s) and resolves same-page links (#266)", () => {
+  const page = "https://example.com/article";
+  assert.strictEqual(
+    resolveNavigableHttpUrl("https://other.example/x", page),
+    "https://other.example/x",
+  );
+  assert.strictEqual(
+    resolveNavigableHttpUrl("http://other.example/x", page),
+    "http://other.example/x",
+  );
+  assert.strictEqual(
+    resolveNavigableHttpUrl("/docs/y", page),
+    "https://example.com/docs/y",
+  );
+  // A non-http(s) base (e.g. the extension popup page) cannot bless a
+  // relative href into a navigation.
+  assert.strictEqual(
+    resolveNavigableHttpUrl("/docs/y", "chrome-extension://id/popup.html"),
+    null,
+  );
+  assert.strictEqual(resolveNavigableHttpUrl("", page), null);
+  assert.strictEqual(resolveNavigableHttpUrl(null, page), null);
+  assert.strictEqual(resolveNavigableHttpUrl("https://", page), null);
+});
+
+test("stripLeadingSummaryHeading drops a redundant model-emitted heading", () => {
+  assert.strictEqual(
+    stripLeadingSummaryHeading("## Summary\nNeanderthals made fat."),
+    "Neanderthals made fat.",
+  );
+  assert.strictEqual(
+    stripLeadingSummaryHeading("**Summary**\nNeanderthals made fat."),
+    "Neanderthals made fat.",
+  );
+  assert.strictEqual(
+    stripLeadingSummaryHeading("Summary:\nNeanderthals made fat."),
+    "Neanderthals made fat.",
+  );
+  assert.strictEqual(
+    stripLeadingSummaryHeading("Summary\nNeanderthals made fat."),
+    "Neanderthals made fat.",
+  );
+  assert.strictEqual(
+    stripLeadingSummaryHeading("\n\n# Summary\nNeanderthals made fat."),
+    "Neanderthals made fat.",
+  );
+});
+
+test("stripLeadingSummaryHeading keeps body text starting with the word", () => {
+  assert.strictEqual(
+    stripLeadingSummaryHeading("Summary of findings shows planning."),
+    "Summary of findings shows planning.",
+  );
+  assert.strictEqual(
+    stripLeadingSummaryHeading("- First point\n- Second point"),
+    "- First point\n- Second point",
+  );
+  assert.strictEqual(stripLeadingSummaryHeading(""), "");
 });

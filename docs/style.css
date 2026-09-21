@@ -501,8 +501,16 @@ h4 { font-size: 1.75rem; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .reveal { opacity: 1; transform: none; transition: none; }
-  [data-split] .w { opacity: 1; transform: none; animation: none; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal, .reveal.in { opacity: 1; transform: none; transition: none; }
+  [data-split] .w, [data-split].in .w { opacity: 1; transform: none; animation: none; }
   .tile, .tile:hover { transform: none; }
   .btn, .nav-links a, .ghlink, .fcol a, .fsocial a, .skip { transition: none; }
 }
@@ -516,6 +524,7 @@ h4 { font-size: 1.75rem; }
   .why-lede { font-size: 1.375rem; }
 
   .hero { padding: 5rem 0 6rem; }
+  .nav-links { gap: 1.75rem; }
   .hero-head, .hero-side, .why-h, .why-p, .why-lede,
   .cta-h { grid-column: 1 / 5; padding: 0; }
   .hero-side { margin-top: 2.75rem; }
@@ -548,7 +557,9 @@ h4 { font-size: 1.75rem; }
   .lead, .cta-p { font-size: 1.125rem; }
   .why-lede { font-size: 1.25rem; }
 
-  .hide-sm { display: none; }
+  .nav-inner { flex-wrap: wrap; gap: 0.5rem 1rem; padding-top: 1rem; padding-bottom: 1rem; }
+  .nav-links { flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem 1.25rem; }
+  .nav-links a { font-size: 0.9375rem; padding-block: 0.5rem; }
   .lead { padding-right: 0; }
   .band { padding-top: 4.75rem; }
   .fcard { padding: 2.5rem 1.5rem; }
@@ -577,4 +588,15 @@ h4 { font-size: 1.75rem; }
   .cta-b2 { grid-row: 4; }
   .foot-grid { grid-template-columns: repeat(2, 1fr); gap: 2.125rem 1.25rem; }
   .rules, .cta-rules, .hero-rules { display: none; }
+}
+
+/* Very small phones (320px up): keep the full nav on one wrapped row
+   without horizontal overflow, and keep tap targets comfortable. */
+@media (max-width: 380px) {
+  .brand { font-size: 1.25rem; }
+  .brand img { width: 1.5rem; height: 1.5rem; }
+  .nav-links { gap: 0.5rem 1rem; }
+  .nav-links a { font-size: 0.875rem; }
+  h1 { font-size: 2.5rem; }
+  .hero-btns .btn { width: 100%; justify-content: center; }
 }

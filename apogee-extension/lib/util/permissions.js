@@ -1,15 +1,19 @@
-/**
- * Checks whether the extension currently has granted host permissions for the specified origins.
- * @param {string[]} origins List of origin match patterns (e.g. ["*://*.bilibili.com/*"])
- * @returns {Promise<boolean>}
- */
-export async function hasHostPermissions(origins) {
-  if (typeof chrome === "undefined" || !chrome.permissions?.contains) {
+// Shared chrome.permissions call core for the check/request pair below:
+// same guard, same callback-to-promise shape, only the API method differs.
+// Fail closed throughout: without the permissions API there is no prompt to
+// grant, so callers must treat access as denied rather than assuming the
+// gated fetch is allowed.
+import { UserFacingError } from "./userError.js";
+async function queryPermissionsApi(method, origins) {
+  if (
+    typeof chrome === "undefined" ||
+    typeof chrome.permissions?.[method] !== "function"
+  ) {
     return false;
   }
   try {
     return await new Promise((resolve) => {
-      chrome.permissions.contains({ origins }, (result) => {
+      chrome.permissions[method]({ origins }, (result) => {
         resolve(Boolean(result));
       });
     });
@@ -19,26 +23,21 @@ export async function hasHostPermissions(origins) {
 }
 
 /**
+ * Checks whether the extension currently has granted host permissions for the specified origins.
+ * @param {string[]} origins List of origin match patterns (e.g. ["*://*.bilibili.com/*"])
+ * @returns {Promise<boolean>}
+ */
+export async function hasHostPermissions(origins) {
+  return queryPermissionsApi("contains", origins);
+}
+
+/**
  * Requests host permissions on demand for the specified origins.
  * @param {string[]} origins List of origin match patterns
  * @returns {Promise<boolean>}
  */
 export async function requestHostPermissions(origins) {
-  if (typeof chrome === "undefined" || !chrome.permissions?.request) {
-    // Fail closed like hasHostPermissions: without the permissions API there
-    // is no prompt to grant, so callers must treat access as denied rather
-    // than assuming the gated fetch is allowed.
-    return false;
-  }
-  try {
-    return await new Promise((resolve) => {
-      chrome.permissions.request({ origins }, (granted) => {
-        resolve(Boolean(granted));
-      });
-    });
-  } catch {
-    return false;
-  }
+  return queryPermissionsApi("request", origins);
 }
 
 /**
@@ -76,6 +75,55 @@ export function getOptionalOriginsForUrl(url) {
   return [];
 }
 
+// Scoped origins for reading one site's content (`*://host/*`). Covered
+// by the all-sites optional declaration, requested only after scripting
+// proves the tab grant is gone (persistent surfaces like the side panel
+// outlive activeTab). Never requested preemptively: popups covered by
+// activeTab must not nag.
+// @param {string} url Target webpage URL
+// @returns {string[]} Single scoped pattern, or [] for non-web URLs
+export function siteOriginsForUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return [];
+    }
+    if (!parsed.hostname) return [];
+    return [`*://${parsed.hostname}/*`];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ask the user for one-site read access, fail-closed like the rest here.
+ * Must run within the user gesture (called from the summarize click path).
+ * @param {string} url Target webpage URL
+ * @returns {Promise<boolean>} True when access is (now) granted
+ */
+export async function requestSiteAccess(url) {
+  const origins = siteOriginsForUrl(url);
+  if (origins.length === 0) return false;
+  if (await hasHostPermissions(origins)) return true;
+  return await requestHostPermissions(origins);
+}
+
+/**
+ * Actionable blocked-permission message for the popup. Names the host so the
+ * user knows what is gated, and names the button that re-prompts (the
+ * permission request must run in the click gesture).
+ * @param {string} url Target webpage URL
+ * @returns {string}
+ */
+export function permissionBlockedMessage(url) {
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {}
+  const where = host ? ` ${host}` : " this site";
+  return `Apogee needs permission to read${where}. Click Summarize again and choose Allow when the browser asks.`;
+}
+
 /**
  * Checks whether optional host permissions are needed for a URL, and if so, prompts the user to grant them.
  * @param {string} url Target webpage URL
@@ -87,4 +135,15 @@ export async function ensurePermissionsForUrl(url) {
   const granted = await hasHostPermissions(origins);
   if (granted) return true;
   return await requestHostPermissions(origins);
+}
+
+/**
+ * Same gate as ensurePermissionsForUrl, but throws the actionable blocked
+ * message instead of returning false so denied callers cannot fall through
+ * to extraction and fail opaquely (#304). Must run within the user gesture.
+ * @param {string} url Target webpage URL
+ */
+export async function ensurePermissionsOrThrow(url) {
+  if (await ensurePermissionsForUrl(url)) return;
+  throw new UserFacingError(permissionBlockedMessage(url));
 }

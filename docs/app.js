@@ -2,6 +2,20 @@
   "use strict";
 
   function initReveal() {
+    var reduceMotion =
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // With reduced motion, skip word-splitting and scroll-triggered reveals
+    // entirely so content is present on first paint with no animation.
+    if (reduceMotion) {
+      Array.prototype.forEach.call(
+        document.querySelectorAll(".reveal, [data-split]"),
+        function (t) { t.classList.add("in"); }
+      );
+      return;
+    }
+
     Array.prototype.forEach.call(document.querySelectorAll("[data-split]"), function (el) {
       var nodes = Array.prototype.slice.call(el.childNodes);
       el.textContent = "";

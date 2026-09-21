@@ -23,12 +23,17 @@ chrome.alarms = {
 };
 globalThis.chrome = chrome;
 
-const { fetchSponsorBlockSegments } =
+const { fetchSponsorBlockSegmentsWithStatus } =
   await import("../../background/service-worker.js");
 
 const VIDEO_ID = "dQw4w9WgXcQ";
 
-test("fetchSponsorBlockSegments skips the lookup when Stay-fully-local is on", async () => {
+async function segmentsFor(videoId) {
+  const { segments } = await fetchSponsorBlockSegmentsWithStatus(videoId);
+  return segments;
+}
+
+test("fetchSponsorBlockSegmentsWithStatus skips the lookup when Stay-fully-local is on", async () => {
   await chrome.storage.local.set({ settings: { useSponsorBlock: false } });
   const originalFetch = globalThis.fetch;
   let calls = 0;
@@ -37,14 +42,14 @@ test("fetchSponsorBlockSegments skips the lookup when Stay-fully-local is on", a
     throw new Error("must not fetch");
   };
   try {
-    assert.deepStrictEqual(await fetchSponsorBlockSegments(VIDEO_ID), []);
+    assert.deepStrictEqual(await segmentsFor(VIDEO_ID), []);
     assert.strictEqual(calls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("fetchSponsorBlockSegments still serves lookups when the setting is on", async () => {
+test("fetchSponsorBlockSegmentsWithStatus still serves lookups when the setting is on", async () => {
   await chrome.storage.local.set({ settings: { useSponsorBlock: true } });
   const originalFetch = globalThis.fetch;
   let calls = 0;
@@ -64,10 +69,53 @@ test("fetchSponsorBlockSegments still serves lookups when the setting is on", as
     };
   };
   try {
-    assert.deepStrictEqual(await fetchSponsorBlockSegments(VIDEO_ID), [
-      [10, 20],
-    ]);
+    assert.deepStrictEqual(await segmentsFor(VIDEO_ID), [[10, 20]]);
     assert.strictEqual(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("fetchSponsorBlockSegmentsWithStatus distinguishes off vs denied vs network vs empty (#306)", async () => {
+  // Off: Stay-fully-local skips without fetching.
+  await chrome.storage.local.set({ settings: { useSponsorBlock: false } });
+  const off = await fetchSponsorBlockSegmentsWithStatus(VIDEO_ID);
+  assert.deepStrictEqual(off, { segments: [], status: "off" });
+
+  // Denied: setting on but host permission missing.
+  await chrome.storage.local.set({ settings: { useSponsorBlock: true } });
+  const originalContains = chrome.permissions.contains;
+  chrome.permissions.contains = (_opts, cb) => cb(false);
+  try {
+    const denied = await fetchSponsorBlockSegmentsWithStatus(VIDEO_ID);
+    assert.deepStrictEqual(denied, { segments: [], status: "denied" });
+  } finally {
+    chrome.permissions.contains = originalContains;
+  }
+
+  // Network: permission granted but the fetch throws.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("offline");
+  };
+  try {
+    const network = await fetchSponsorBlockSegmentsWithStatus(VIDEO_ID);
+    assert.deepStrictEqual(network, {
+      segments: [],
+      status: "network-error",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // Empty: reachable API with no entry for this video.
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => [],
+  });
+  try {
+    const empty = await fetchSponsorBlockSegmentsWithStatus(VIDEO_ID);
+    assert.deepStrictEqual(empty, { segments: [], status: "empty" });
   } finally {
     globalThis.fetch = originalFetch;
   }

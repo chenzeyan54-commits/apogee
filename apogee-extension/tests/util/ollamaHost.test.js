@@ -79,20 +79,21 @@ test("validateOllamaHost rejects malformed URLs", () => {
   );
 });
 
-test("the shared allowed set is exactly 127.0.0.1 and localhost, no IPv6 (#210)", () => {
+test("the shared allowed set is 127.0.0.1, localhost, and IPv6 loopback [::1] (#210)", () => {
   assert.deepStrictEqual(
     new Set(ALLOWED_OLLAMA_HOSTS),
-    new Set(["127.0.0.1", "localhost"]),
+    new Set(["127.0.0.1", "localhost", "[::1]"]),
   );
   assert.strictEqual(DEFAULT_OLLAMA_PORT, "11434");
-  assert.throws(
-    () => validateLoopbackUrl("http://[::1]:11434"),
-    /Disallowed Ollama host/,
+  assert.strictEqual(
+    validateLoopbackUrl("http://[::1]:11434"),
+    "http://[::1]:11434",
   );
-  assert.throws(
-    () => validateLoopbackUrl("http://[::1]:11434", { label: "llama.cpp" }),
-    /Disallowed llama\.cpp host/,
+  assert.strictEqual(
+    validateLoopbackUrl("http://[::1]:11434", { label: "llama.cpp" }),
+    "http://[::1]:11434",
   );
+  assert.strictEqual(validateOllamaHost("http://[::1]"), "http://[::1]:11434");
 });
 
 test("validateLoopbackUrl supports a per-provider default port (#210)", () => {
@@ -108,4 +109,51 @@ test("validateLoopbackUrl supports a per-provider default port (#210)", () => {
     validateLoopbackUrl("http://127.0.0.1:9999", { defaultPort: "8080" }),
     "http://127.0.0.1:9999",
   );
+});
+
+test("validateOllamaHost trims surrounding whitespace and upper-case input", () => {
+  assert.strictEqual(
+    validateOllamaHost("  http://127.0.0.1:11434  "),
+    "http://127.0.0.1:11434",
+  );
+  assert.strictEqual(
+    validateOllamaHost("HTTP://LOCALHOST:11434/"),
+    "http://localhost:11434",
+  );
+});
+
+test("validateOllamaHost treats an empty-string port as missing, not invalid", () => {
+  assert.strictEqual(
+    validateOllamaHost("http://127.0.0.1:/"),
+    "http://127.0.0.1:11434",
+  );
+  assert.strictEqual(
+    validateOllamaHost("http://localhost:"),
+    "http://localhost:11434",
+  );
+});
+
+test("validateOllamaHost strips a pasted path, query, and fragment to the origin", () => {
+  assert.strictEqual(
+    validateOllamaHost("http://127.0.0.1:11434/some/path"),
+    "http://127.0.0.1:11434",
+  );
+  assert.strictEqual(
+    validateOllamaHost("http://localhost:11434/api/chat?x=1#frag"),
+    "http://localhost:11434",
+  );
+});
+
+test("validateOllamaHost rejects embedded credentials", () => {
+  assert.throws(
+    () => validateOllamaHost("http://user:pass@127.0.0.1:11434/"),
+    /Disallowed Ollama userinfo/,
+  );
+});
+
+test("validateOllamaHost rejects empty and non-string input", () => {
+  assert.throws(() => validateOllamaHost(""), /Invalid Ollama host/);
+  assert.throws(() => validateOllamaHost("   "), /Invalid Ollama host/);
+  assert.throws(() => validateOllamaHost(undefined), /Invalid Ollama host/);
+  assert.throws(() => validateOllamaHost(null), /Invalid Ollama host/);
 });

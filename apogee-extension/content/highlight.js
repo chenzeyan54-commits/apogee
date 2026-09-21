@@ -63,39 +63,8 @@ function rangeFromOffsets(records, start, end) {
 
 const APOGEE_HIGHLIGHT_NAME = "apogee-grounding";
 
-function ensureShadowOverlayHost() {
-  if (typeof document === "undefined" || !document.body) return null;
-  let host = document.getElementById("apogee-highlight-root");
-  if (!host) {
-    host = document.createElement("apogee-highlight-root");
-    host.id = "apogee-highlight-root";
-    const shadow = host.attachShadow({ mode: "open" });
-    const style = document.createElement("style");
-    style.textContent = `
-      :host {
-        all: initial;
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 0;
-        height: 0;
-        pointer-events: none;
-        z-index: 2147483647;
-      }
-      .apogee-overlay-container {
-        position: absolute;
-        pointer-events: none;
-      }
-    `;
-    shadow.appendChild(style);
-    document.body.appendChild(host);
-  }
-  return host.shadowRoot;
-}
-
 function performHighlight(chunkText) {
   try {
-    ensureShadowOverlayHost();
     const { text, records } = buildTextIndex(document.body);
     const match = findMatchingRange(text, chunkText);
     if (!match) return { found: false, highlighted: false };

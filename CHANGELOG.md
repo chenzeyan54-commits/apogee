@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Route GitLab pages through extractor ([d5d57ea](https://github.com/darshi1337/apogee/commit/d5d57ea6e7c56b23787499789b698d8cd33a1ab3))
 - Inject GitLab extractor ([bf94a7c](https://github.com/darshi1337/apogee/commit/bf94a7c2aa564443fe3c4b1b0f70095728d0bf3d))
 - Add Dev.to article extractor (#169) ([64e2f3d](https://github.com/darshi1337/apogee/commit/64e2f3d665b5532c38788e4cd5950a54984c5c1a))
+- Localize popup via chrome.i18n framework ([6780eb7](https://github.com/darshi1337/apogee/commit/6780eb7bf681182894c6292833f92440d31955e7))
 
 ### Fixed
 
@@ -124,6 +125,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Await finalize path, preserve text and surface error on storage failure ([9496893](https://github.com/darshi1337/apogee/commit/949689392b7e4e90f19fe0d442ce5acab46ccc4e))
 - Gate multi-tab persist on private hosts, bound prompt to model budget, add cancel signal ([7266c2e](https://github.com/darshi1337/apogee/commit/7266c2e95f591b09eaadc81ec24c482f165c2fde))
 - Check for URL-shaped storage keys instead of substring match ([7c25ae2](https://github.com/darshi1337/apogee/commit/7c25ae28b8b4df86e6921d35b64b5b21b57ecd27))
+- Validate summary link protocols ([6c70c08](https://github.com/darshi1337/apogee/commit/6c70c08df47821940c9dc21b0bcca7017b1d53da))
+- Testable http(s) allowlist helper for summary link navigation ([a9dfefd](https://github.com/darshi1337/apogee/commit/a9dfefd66d4b1f99f8e52b2753c073baceb2508f))
+- Cap notification message length to prevent truncation (#252) ([02e49fb](https://github.com/darshi1337/apogee/commit/02e49fbd24d29832f57e1b3f7d3406cf9846d9e1))
+- Stop triple-buffering 50MB file uploads, cap expanded text ([6611734](https://github.com/darshi1337/apogee/commit/66117343e962c0c232d48607b27fb17d25f4b67e))
+- Address review nits for notification cap (#252) ([c5fc538](https://github.com/darshi1337/apogee/commit/c5fc53804125d12aa108ad0a26b40ff9e6d1b6f2))
+- Per-engine inference locks with timeout, keep healthy engine on transient error (#268) ([6d81524](https://github.com/darshi1337/apogee/commit/6d81524ef7df3a21edb95c3a4419504e5d2aa805))
+- Keep lock-timeout timer referenced so waiters are never cancelled ([d1d4635](https://github.com/darshi1337/apogee/commit/d1d46354c721d7a50914a16cd5a2a41753fe155a))
+- Bound SW/offscreen ingress, cap map chunks and stream text (#269) ([91f8903](https://github.com/darshi1337/apogee/commit/91f89036bfa60a549806ceef21c673e03baef64f))
+- Responsive nav and reduced-motion pass (#241) ([574fc68](https://github.com/darshi1337/apogee/commit/574fc6892755720ccc0d38850308ace475072637))
+- Reuse cached content when re-rendering a summary in a different format (#177) ([e85c92c](https://github.com/darshi1337/apogee/commit/e85c92cb967c5c1f2da7df02a3aad07cb8a5f057))
+- Restore Ollama connectivity for loopback variants without opening SSRF ([7727ae4](https://github.com/darshi1337/apogee/commit/7727ae434ae90af558ee377327f196a8e64d4e83))
+- Name http://[::1]/* verbatim in PRIVACY.md for the permissions-doc check ([2fb63b1](https://github.com/darshi1337/apogee/commit/2fb63b17c23091c06fc71f6a86442b7aa4260128))
+- Remove dead plaintext export, getURL fallbacks, PUA link token ([9da732e](https://github.com/darshi1337/apogee/commit/9da732e128b00addfd1b5f73a5f2d93ee0a99f70))
+- Drop dead highlight overlay, rename dev script, add coverage flag ([e2953e5](https://github.com/darshi1337/apogee/commit/e2953e5ec99c9dea86a986317e72ada417e855dd))
+- Remove unused gmail brand icon ([84b6b1c](https://github.com/darshi1337/apogee/commit/84b6b1cf22b3f1add33f7a9abece6072ae9cd39d))
+- Add timeout auto-teardown and re-entry cleanup for selection capture ([8906cfe](https://github.com/darshi1337/apogee/commit/8906cfe5d767e8c6099f85cbf35cde8c5fcd1e7b))
+- Format selection test with prettier ([95fe713](https://github.com/darshi1337/apogee/commit/95fe713ecf163fbb5cf9d5c436a74f08ff69dd29))
+- Cover happy-path capture and bound re-entry timer ([820b794](https://github.com/darshi1337/apogee/commit/820b7941903e218de3ef7579b0a4b96388cf4918))
+- Restore eager setup plus onStartup, use shared IDs ([898c81b](https://github.com/darshi1337/apogee/commit/898c81b838543705d601ce45446324bb72e75f84))
+- Handle extractor failures and URL variants (#309) ([842c5d7](https://github.com/darshi1337/apogee/commit/842c5d7a84c208809b5ff8bce7d2ca7e1acfad56))
+- Bump adm-zip override to 0.6.1 for GHSA-7q85-xj36-vmfc ([6821665](https://github.com/darshi1337/apogee/commit/6821665916ad7c04b3e9eb0ec944af27a0bdd053))
+- Empty-state wordmark and bulk JSON export (#310) ([7142af0](https://github.com/darshi1337/apogee/commit/7142af07c1de5ad11e178e03b3e6753379e7fb97))
+- Defrag-style segmented download progress (#316) ([d45251a](https://github.com/darshi1337/apogee/commit/d45251ad2d8eba1a9ab8a06dfd2fd71138a377ed))
+- Gate extraction on denial, distinguish lookup failures (#304, #306) ([16b4459](https://github.com/darshi1337/apogee/commit/16b445905d8848e72b2f71903703b86aee71cb2e))
 
 ### Security
 

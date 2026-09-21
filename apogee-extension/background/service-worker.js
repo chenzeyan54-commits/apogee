@@ -13,14 +13,19 @@ import {
 } from "../lib/engines/llamaCppClient.js";
 import { getMaxChunkChars, getMaxChunks } from "../lib/engines/modelLimits.js";
 import {
-  tokensForChunk,
-  isWarmedUp,
-  tokensPerSecond,
-  finalTokensPerSecond,
-} from "../lib/util/throughput.js";
+  appendChunkToState,
+  createStreamState,
+  finishStateWithStats,
+  replayStreamToPort,
+  warmedStatsForState,
+} from "../lib/util/streamState.js";
 import { chunkBySections } from "../lib/summarize/sections.js";
 import { errorHelpUrl } from "../lib/util/errorHelp.js";
-import { toUserMessage, UserFacingError } from "../lib/util/userError.js";
+import {
+  toUserMessage,
+  UserFacingError,
+  formatNotificationMessage,
+} from "../lib/util/userError.js";
 import { hasHostPermissions } from "../lib/util/permissions.js";
 import { ensureLoopbackCorsRule } from "../lib/util/loopbackCors.js";
 import {
@@ -63,6 +68,7 @@ import {
   hashUrl,
   persistSummaryIfAllowed,
   persistContent,
+  getCachedContent,
   shouldPersist,
   isPrivateUrl,
   CACHEABLE_PAGE_TYPES,
@@ -383,6 +389,27 @@ function isOffscreenStream(streamId) {
 
 const activeStreams = new Map();
 
+// WebLLM / Transformers jobs run in the offscreen document, so they have no
+// entry in activeStreams above. Without explicit tracking the keep-alive
+// below sees no work in flight, the worker sleeps ~30s into a multi-minute
+// local generation, and the relay ports die: the popup freezes on its
+// spinner while the offscreen job keeps running to completion (the full
+// text only appears when the popup reopens and reads the saved view state).
+// Entries live only while a popup is relayed to an offscreen stream; the
+// headless finish path (stream-finished) needs no keep-alive because its
+// message wakes the worker on arrival.
+export const offscreenRelayInflight = new Set();
+
+export function trackOffscreenRelay(streamId) {
+  if (!streamId) return;
+  offscreenRelayInflight.add(streamId);
+  startKeepAlive();
+}
+
+export function untrackOffscreenRelay(streamId) {
+  offscreenRelayInflight.delete(streamId);
+}
+
 const STREAM_CLEANUP_PREFIX = "stream-cleanup:";
 const STREAM_CLEANUP_MINUTES = 2;
 function scheduleStreamCleanup(streamId) {
@@ -394,10 +421,11 @@ function scheduleStreamCleanup(streamId) {
 const KEEPALIVE_MS = 20000;
 let keepAliveTimer = null;
 
-function hasWorkInFlight() {
+export function hasWorkInFlight() {
   for (const stream of activeStreams.values()) {
     if (!stream.done) return true;
   }
+  if (offscreenRelayInflight.size > 0) return true;
   return pendingSuggestKeys.size > 0;
 }
 
@@ -413,9 +441,16 @@ function startKeepAlive() {
       chrome.runtime.getPlatformInfo(() => void chrome.runtime.lastError);
     } catch {}
   }, KEEPALIVE_MS);
+  // Node test runners hold the event loop for active intervals; browsers
+  // return a number here so this is a no-op in the real worker.
+  if (keepAliveTimer.unref) keepAliveTimer.unref();
 }
 
 function relayToOffscreenStream(popupPort, streamId) {
+  // A live viewer exists, so this offscreen job is work in flight: keep the
+  // worker awake until the relay ends, otherwise it sleeps mid-generation
+  // and the popup stalls on its spinner.
+  trackOffscreenRelay(streamId);
   const offscreenPort = chrome.runtime.connect({
     name: `offscreen-stream-${streamId}`,
   });
@@ -423,13 +458,21 @@ function relayToOffscreenStream(popupPort, streamId) {
   let terminal = false;
 
   offscreenPort.onMessage.addListener((msg) => {
-    if (msg.type === "done" || msg.type === "error") terminal = true;
+    if (
+      msg.type === "done" ||
+      msg.type === "error" ||
+      msg.type === "cancelled"
+    ) {
+      terminal = true;
+      untrackOffscreenRelay(streamId);
+    }
     try {
       popupPort.postMessage(msg);
     } catch {}
   });
 
   offscreenPort.onDisconnect.addListener(() => {
+    untrackOffscreenRelay(streamId);
     if (!terminal) {
       try {
         popupPort.postMessage({
@@ -444,6 +487,7 @@ function relayToOffscreenStream(popupPort, streamId) {
   });
 
   popupPort.onDisconnect.addListener(() => {
+    untrackOffscreenRelay(streamId);
     try {
       offscreenPort.disconnect();
     } catch {}
@@ -543,36 +587,17 @@ async function getRelevantAskContent(content, question) {
 }
 
 function createBufferedStream(streamId, { finalize, model, title, url }) {
-  const stream = {
-    text: "",
-    done: false,
-    error: null,
+  const stream = createStreamState({
     errorUserFacing: false,
-    cancelled: false,
-    subscribers: new Set(),
     controller: new AbortController(),
-    tokenCount: 0,
-    firstTokenTime: null,
-    tokensPerSec: null,
-  };
+  });
   activeStreams.set(streamId, stream);
   startKeepAlive();
 
   const finish = (msg) => {
     if (stream.cancelled) return;
     if (msg.type === "done") {
-      stream.done = true;
-      const elapsedMs =
-        stream.firstTokenTime != null
-          ? performance.now() - stream.firstTokenTime
-          : 0;
-      stream.tokensPerSec =
-        finalTokensPerSecond({
-          serverStats: msg.serverStats ?? null,
-          tokenCount: stream.tokenCount,
-          elapsedMs,
-        }) || null;
-      msg = { ...msg, tokensPerSec: stream.tokensPerSec };
+      msg = finishStateWithStats(stream, msg);
     }
     if (msg.type === "error") {
       stream.error = msg.error;
@@ -594,19 +619,10 @@ function createBufferedStream(streamId, { finalize, model, title, url }) {
   };
 
   const emitChunk = (text) => {
-    if (!text || stream.cancelled) return;
-    stream.text += text;
-    if (stream.firstTokenTime == null)
-      stream.firstTokenTime = performance.now();
-    stream.tokenCount += tokensForChunk(text);
+    if (!appendChunkToState(stream, text)) return;
     broadcastToStream(stream, { type: "chunk", text });
-    const elapsedMs = performance.now() - stream.firstTokenTime;
-    if (isWarmedUp(stream.tokenCount, elapsedMs)) {
-      broadcastToStream(stream, {
-        type: "stats",
-        tokensPerSec: tokensPerSecond(stream.tokenCount, elapsedMs),
-      });
-    }
+    const stats = warmedStatsForState(stream);
+    if (stats) broadcastToStream(stream, stats);
   };
 
   return { stream, finish, emitChunk };
@@ -640,6 +656,8 @@ async function startLocalHttpStream(
     url,
   });
 
+  // Ingress bound removed: long pages flow to the chunker, which bounds
+  // model calls via MAX_ABSOLUTE_MAP_CHUNKS.
   let validHost;
   try {
     validHost = validateLoopbackHost(host, client.label);
@@ -809,86 +827,94 @@ async function startTransformersStream(
   const { customInstructions } = await getSettings();
 
   try {
-    await withTransformersEngine(model, onProgress, async (eng) => {
-      if (action === "summarize") {
-        const effectiveLanguage = await resolveEffectiveLanguage(
-          content,
-          language,
-        );
-        const generator = summarizeText(
-          {
-            text: content,
-            title,
-            url,
-            mode,
-            type,
-            model,
-            language: effectiveLanguage,
-            customInstructions,
-            isSelection,
-            focusKeyword,
-            signal: stream.controller.signal,
-          },
-          {
-            translateFn,
-            chatStreamFn: async function* (_host, _model, prompt, opts) {
-              let count = 0;
-              for await (const token of transformersChatStream(eng, prompt, {
-                system: opts?.system,
-              })) {
-                if (stream.cancelled) return;
-                count++;
-                if (count % 24 === 0) {
-                  onProgress({
-                    progress: 0,
-                    text: `${longNote}${stageLabel} (${count} words)`,
-                  });
+    await withTransformersEngine(
+      model,
+      onProgress,
+      async (eng) => {
+        if (action === "summarize") {
+          const effectiveLanguage = await resolveEffectiveLanguage(
+            content,
+            language,
+          );
+          const generator = summarizeText(
+            {
+              text: content,
+              title,
+              url,
+              mode,
+              type,
+              model,
+              language: effectiveLanguage,
+              customInstructions,
+              isSelection,
+              focusKeyword,
+              signal: stream.controller.signal,
+            },
+            {
+              translateFn,
+              chatStreamFn: async function* (_host, _model, prompt, opts) {
+                let count = 0;
+                for await (const token of transformersChatStream(eng, prompt, {
+                  system: opts?.system,
+                })) {
+                  if (stream.cancelled) return;
+                  count++;
+                  if (count % 24 === 0) {
+                    onProgress({
+                      progress: 0,
+                      text: `${longNote}${stageLabel} (${count} words)`,
+                    });
+                  }
+                  yield token;
                 }
-                yield token;
-              }
+              },
+              onProgress: (p) => {
+                if (p.stage === "truncated") {
+                  longNote = "Long page - summarizing the key parts. ";
+                  onProgress({ progress: 0, text: longNote.trim() });
+                  return;
+                }
+                if (p.stage === "reduce") stageLabel = "Merging summary...";
+                else if (p.stage === "translate") stageLabel = "Translating...";
+                else
+                  stageLabel = `Summarizing part ${p.index + 1} of ${p.total}...`;
+                onProgress({ progress: 0, text: longNote + stageLabel });
+              },
             },
-            onProgress: (p) => {
-              if (p.stage === "truncated") {
-                longNote = "Long page - summarizing the key parts. ";
-                onProgress({ progress: 0, text: longNote.trim() });
-                return;
-              }
-              if (p.stage === "reduce") stageLabel = "Merging summary...";
-              else if (p.stage === "translate") stageLabel = "Translating...";
-              else
-                stageLabel = `Summarizing part ${p.index + 1} of ${p.total}...`;
-              onProgress({ progress: 0, text: longNote + stageLabel });
+          );
+          for await (const token of generator) {
+            emitChunk(token);
+          }
+        } else if (action === "ask") {
+          const relevantContent = await getRelevantAskContent(
+            content,
+            question,
+          );
+          const prompt = withCustomInstructions(
+            buildAnswerPrompt(title, url, relevantContent, question),
+            customInstructions,
+          );
+          const chat = (p, opts) =>
+            transformersChatStream(eng, p, { system: opts?.system });
+          const askLanguage = await resolveEffectiveLanguage(content, language);
+          for await (const token of streamInTargetLanguage(
+            chat,
+            prompt,
+            askLanguage,
+            {
+              signal: stream.controller.signal,
+              translateFn,
             },
-          },
-        );
-        for await (const token of generator) {
-          emitChunk(token);
+          )) {
+            if (stream.cancelled) break;
+            emitChunk(token);
+          }
+        } else {
+          throw new Error(`Unknown transformers-stream action: ${action}`);
         }
-      } else if (action === "ask") {
-        const relevantContent = await getRelevantAskContent(content, question);
-        const prompt = withCustomInstructions(
-          buildAnswerPrompt(title, url, relevantContent, question),
-          customInstructions,
-        );
-        const chat = (p, opts) =>
-          transformersChatStream(eng, p, { system: opts?.system });
-        const askLanguage = await resolveEffectiveLanguage(content, language);
-        for await (const token of streamInTargetLanguage(
-          chat,
-          prompt,
-          askLanguage,
-          {
-            signal: stream.controller.signal,
-            translateFn,
-          },
-        )) {
-          if (stream.cancelled) break;
-          emitChunk(token);
-        }
-      } else {
-        throw new Error(`Unknown transformers-stream action: ${action}`);
-      }
-    });
+      },
+      { signal: stream.controller.signal },
+    );
     finish({ type: "done" });
   } catch (err) {
     finish({
@@ -899,24 +925,35 @@ async function startTransformersStream(
   }
 }
 
+// Shared tail for the local suggestion generators: prompt, language,
+// translator, generate, parse. Callers differ only in how they talk to their
+// engine (the `chat` closure).
+async function generateQuestionsFromChat(
+  chat,
+  { title, url, summary, language, translationEngine },
+) {
+  const prompt = buildSuggestQuestionsPrompt(title, url, summary);
+  const qLanguage = await resolveEffectiveLanguage(summary, language);
+  const translateFn =
+    translationEngine === TRANSLATION_ENGINES.OPUS
+      ? makeOpusTranslateFn(() => {})
+      : undefined;
+  const text = await generateInTargetLanguage(chat, prompt, qLanguage, {
+    translateFn,
+  });
+  return parseSuggestedQuestions(text);
+}
+
 async function generateTransformersSuggestions(
   model,
   { title, url, summary, language, translationEngine },
 ) {
-  return withTransformersEngine(model, null, async (eng) => {
-    const prompt = buildSuggestQuestionsPrompt(title, url, summary);
-    const chat = (p, opts) =>
-      transformersChatStream(eng, p, { system: opts?.system });
-    const qLanguage = await resolveEffectiveLanguage(summary, language);
-    const translateFn =
-      translationEngine === TRANSLATION_ENGINES.OPUS
-        ? makeOpusTranslateFn(() => {})
-        : undefined;
-    const text = await generateInTargetLanguage(chat, prompt, qLanguage, {
-      translateFn,
-    });
-    return parseSuggestedQuestions(text);
-  });
+  return withTransformersEngine(model, null, async (eng) =>
+    generateQuestionsFromChat(
+      (p, opts) => transformersChatStream(eng, p, { system: opts?.system }),
+      { title, url, summary, language, translationEngine },
+    ),
+  );
 }
 
 export async function runBackgroundSummarize(
@@ -945,7 +982,14 @@ export async function runBackgroundSummarize(
       isPdf: false,
     };
   } else {
-    pageData = await extractFromActiveTab(tab);
+    // Reuse already-extracted content when available, so a re-summarize in
+    // another format only re-runs the model (#177).
+    const cached = await getCachedContent(tab.url);
+    if (cached && CACHEABLE_PAGE_TYPES.has(cached.type)) {
+      pageData = cached;
+    } else {
+      pageData = await extractFromActiveTab(tab);
+    }
     if (!pageData) {
       throw new UserFacingError(COULD_NOT_READ_THIS_PAGE_ERROR_MSG);
     }
@@ -974,7 +1018,7 @@ export async function runBackgroundSummarize(
   }
 
   let content = pageData.content;
-  if (pageData.isPdf) {
+  if (pageData.isPdf && !content) {
     try {
       content = await extractPdfContent(tab);
     } catch (err) {
@@ -1108,49 +1152,15 @@ function notifyJobFailed(err) {
     type: "basic",
     iconUrl: chrome.runtime.getURL("assets/icon-96.png"),
     title: "Summarize failed",
-    message: `${message} Click to see what this means.`,
-  });
-}
-
-const SUMMARIZE_CONTEXT_MENU_ID = "apogee-summarize";
-const SUMMARIZE_SELECTION_CONTEXT_MENU_ID = "apogee-summarize-selection";
-
-if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
-  chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-      id: SUMMARIZE_CONTEXT_MENU_ID,
-      title: "Summarize this page",
-      contexts: ["page"],
-    });
-    chrome.contextMenus.create({
-      id: SUMMARIZE_SELECTION_CONTEXT_MENU_ID,
-      title: "Summarize selection",
-      contexts: ["selection"],
-    });
+    message: formatNotificationMessage(
+      message,
+      " Click to see what this means.",
+    ),
   });
 }
 
 // Narrow the bundled loopback Origin-strip to this extension's non-tab requests where session rules are supported; loopback clients await the same helper before fetching, so this is only a fast track. Never rejects.
 ensureLoopbackCorsRule().catch(() => {});
-
-if (
-  typeof chrome !== "undefined" &&
-  chrome.contextMenus?.onClicked?.addListener
-) {
-  chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (!tab) return;
-    if (info.menuItemId === SUMMARIZE_CONTEXT_MENU_ID) {
-      runBackgroundSummarize(tab, { notifyOnFinish: true }).catch((err) =>
-        notifyJobFailed(err),
-      );
-    } else if (info.menuItemId === SUMMARIZE_SELECTION_CONTEXT_MENU_ID) {
-      runBackgroundSummarize(tab, {
-        notifyOnFinish: true,
-        selectionText: info.selectionText,
-      }).catch((err) => notifyJobFailed(err));
-    }
-  });
-}
 
 if (typeof chrome !== "undefined" && chrome.commands?.onCommand?.addListener) {
   chrome.commands.onCommand.addListener(async (command) => {
@@ -1175,6 +1185,23 @@ if (typeof chrome !== "undefined" && chrome.tabs?.onRemoved?.addListener) {
   });
 }
 
+// Tell open side panels to re-render for the newly active tab. The panel
+// document re-queries its own window's active tab on receipt, so the
+// broadcast is safe across windows.
+function notifySidePanelsOfTabSwitch() {
+  for (const port of sidePanelPorts.values()) {
+    try {
+      port.postMessage({ type: "side-panel-active-tab-changed" });
+    } catch {}
+  }
+}
+
+if (typeof chrome !== "undefined" && chrome.tabs?.onActivated?.addListener) {
+  chrome.tabs.onActivated.addListener(() => {
+    notifySidePanelsOfTabSwitch();
+  });
+}
+
 // One-time purge of legacy URL-keyed view states on install/startup.
 if (typeof chrome !== "undefined" && chrome.runtime?.onStartup?.addListener) {
   chrome.runtime.onStartup.addListener(() => {
@@ -1189,18 +1216,63 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
 
 const SPONSORBLOCK_CATEGORIES = ["sponsor", "selfpromo", "interaction"];
 
-export async function fetchSponsorBlockSegments(videoId) {
-  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId || "")) return [];
+// Distinguishable outcomes for skip-segment / subtitle lookups (#306):
+// callers previously saw [] for denied permission, network failure, and
+// genuinely-empty alike. Each lookup below reports which one happened via
+// its status field so denied/off, network errors, and empty stay distinct.
+export const SKIP_LOOKUP_STATUS = {
+  OK: "ok",
+  OFF: "off",
+  DENIED: "denied",
+  INVALID: "invalid",
+  NETWORK: "network-error",
+  EMPTY: "empty",
+};
+
+// Shared fetch/HTTP/JSON core for the lookup trio below: same timeout
+// fetch, same non-ok check, same JSON parse, only the label differs.
+// Returns { data } on success or { status: NETWORK } with a telemetry-safe
+// log (label + HTTP code / error name, never video ids or page content).
+async function fetchJsonWithStatus(url, options, label) {
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (err) {
+    console.warn(`${label} failed: network error.`, err?.name || "");
+    return { status: SKIP_LOOKUP_STATUS.NETWORK };
+  }
+  if (!res.ok) {
+    console.warn(`${label} failed: HTTP ${res.status}.`);
+    return { status: SKIP_LOOKUP_STATUS.NETWORK };
+  }
+  try {
+    return { data: await res.json() };
+  } catch {
+    console.warn(`${label} failed: invalid JSON response.`);
+    return { status: SKIP_LOOKUP_STATUS.NETWORK };
+  }
+}
+
+export async function fetchSponsorBlockSegmentsWithStatus(videoId) {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId || "")) {
+    return { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
+  }
 
   // "Stay fully local" means no SponsorBlock lookup at all; the uploader falls back to its local phrase heuristic.
   const { useSponsorBlock } = await getSettings();
-  if (useSponsorBlock === false || useSponsorBlock === "off") return [];
+  if (useSponsorBlock === false || useSponsorBlock === "off") {
+    console.info("SponsorBlock lookup skipped: Stay-fully-local is on.");
+    return { segments: [], status: SKIP_LOOKUP_STATUS.OFF };
+  }
 
   const hasPerm = await hasHostPermissions([
     "*://*.youtube.com/*",
     "https://sponsor.ajay.app/*",
   ]);
-  if (!hasPerm) return [];
+  if (!hasPerm) {
+    console.warn("SponsorBlock lookup skipped: host permission denied.");
+    return { segments: [], status: SKIP_LOOKUP_STATUS.DENIED };
+  }
 
   const bytes = new TextEncoder().encode(videoId);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -1214,27 +1286,21 @@ export async function fetchSponsorBlockSegments(videoId) {
   );
   const url = `https://sponsor.ajay.app/api/skipSegments/${prefix}?categories=${categories}`;
 
-  let res;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-  } catch {
-    return [];
-  }
-  if (!res.ok) return [];
-
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    return [];
-  }
+  const { data, status } = await fetchJsonWithStatus(
+    url,
+    { signal: AbortSignal.timeout(4000) },
+    "SponsorBlock lookup",
+  );
+  if (status) return { segments: [], status };
 
   const entry = Array.isArray(data)
     ? data.find((d) => d.videoID === videoId || d.hash === hashHex)
     : null;
-  if (!entry || !Array.isArray(entry.segments)) return [];
+  if (!entry || !Array.isArray(entry.segments)) {
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
+  }
 
-  return entry.segments
+  const segments = entry.segments
     .filter(
       (s) =>
         SPONSORBLOCK_CATEGORIES.includes(s.category) &&
@@ -1242,17 +1308,23 @@ export async function fetchSponsorBlockSegments(videoId) {
         s.segment.length === 2,
     )
     .map((s) => [s.segment[0], s.segment[1]]);
+  if (segments.length === 0) {
+    return { segments, status: SKIP_LOOKUP_STATUS.EMPTY };
+  }
+  return { segments, status: SKIP_LOOKUP_STATUS.OK };
 }
 
-export async function fetchBilibiliSubtitles({
+export async function fetchBilibiliSubtitlesWithStatus({
   aid,
   bvid,
   cid,
   preferredLang,
 }) {
-  if (!cid || (!aid && !bvid)) return [];
+  if (!cid || (!aid && !bvid))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
   const cidStr = String(cid);
-  if (!/^\d+$/.test(cidStr)) return [];
+  if (!/^\d+$/.test(cidStr))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
   const params = new URLSearchParams({ cid: cidStr });
   if (bvid && /^BV[0-9A-Za-z]{10}$/.test(bvid)) params.set("bvid", bvid);
   else if (aid && /^\d+$/.test(String(aid))) params.set("aid", String(aid));
@@ -1260,29 +1332,22 @@ export async function fetchBilibiliSubtitles({
     "*://*.bilibili.com/*",
     "*://*.hdslb.com/*",
   ]);
-  if (!hasPerm) return [];
-
-  let listRes;
-  try {
-    // Note: credentials: "include" is required for Bilibili's /x/player/v2 endpoint because Bilibili restricts subtitle list metadata to logged-in sessions. Cookies are strictly scoped to api.bilibili.com API requests on Bilibili pages.
-    listRes = await fetch(
-      `https://api.bilibili.com/x/player/v2?${params.toString()}`,
-      { credentials: "include", signal: AbortSignal.timeout(6000) },
-    );
-  } catch {
-    return [];
+  if (!hasPerm) {
+    console.warn("Bilibili subtitles skipped: host permission denied.");
+    return { segments: [], status: SKIP_LOOKUP_STATUS.DENIED };
   }
-  if (!listRes.ok) return [];
 
-  let listData;
-  try {
-    listData = await listRes.json();
-  } catch {
-    return [];
-  }
+  // Note: credentials: "include" is required for Bilibili's /x/player/v2 endpoint because Bilibili restricts subtitle list metadata to logged-in sessions. Cookies are strictly scoped to api.bilibili.com API requests on Bilibili pages.
+  const { data: listData, status: listStatus } = await fetchJsonWithStatus(
+    `https://api.bilibili.com/x/player/v2?${params.toString()}`,
+    { credentials: "include", signal: AbortSignal.timeout(6000) },
+    "Bilibili subtitles",
+  );
+  if (listStatus) return { segments: [], status: listStatus };
 
   const subtitles = listData?.data?.subtitle?.subtitles;
-  if (!Array.isArray(subtitles) || subtitles.length === 0) return [];
+  if (!Array.isArray(subtitles) || subtitles.length === 0)
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
 
   const langPrefix = (preferredLang || "").split("-")[0].toLowerCase();
   const chosen =
@@ -1291,37 +1356,28 @@ export async function fetchBilibiliSubtitles({
     ) || subtitles[0];
 
   let subUrl = chosen?.subtitle_url;
-  if (!subUrl) return [];
+  if (!subUrl) return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   if (subUrl.startsWith("//")) subUrl = `https:${subUrl}`;
   let host;
   try {
     host = new URL(subUrl).hostname.toLowerCase();
   } catch {
-    return [];
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   }
-  if (host !== "hdslb.com" && !host.endsWith(".hdslb.com")) return [];
+  if (host !== "hdslb.com" && !host.endsWith(".hdslb.com"))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
 
-  let subRes;
-  try {
-    // Subtitle track content on the hdslb.com CDN does not require session authentication, so credentials are explicitly omitted to restrict cookie scope.
-    subRes = await fetch(subUrl, {
-      credentials: "omit",
-      signal: AbortSignal.timeout(6000),
-    });
-  } catch {
-    return [];
-  }
-  if (!subRes.ok) return [];
-
-  let subData;
-  try {
-    subData = await subRes.json();
-  } catch {
-    return [];
-  }
+  // Subtitle track content on the hdslb.com CDN does not require session authentication, so credentials are explicitly omitted to restrict cookie scope.
+  const { data: subData, status: subStatus } = await fetchJsonWithStatus(
+    subUrl,
+    { credentials: "omit", signal: AbortSignal.timeout(6000) },
+    "Bilibili subtitle track",
+  );
+  if (subStatus) return { segments: [], status: subStatus };
 
   const body = subData?.body;
-  if (!Array.isArray(body)) return [];
+  if (!Array.isArray(body))
+    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   // Bounded accumulation: stop at the segment cap and past the char budget
   // so a malformed track cannot bloat service-worker memory. Segments past
   // the budget are dropped, never partially kept, to keep start/text pairs
@@ -1338,7 +1394,10 @@ export async function fetchBilibiliSubtitles({
     segments.push({ start: Number(seg?.from) || 0, text });
     totalChars += text.length;
   }
-  return segments;
+  if (segments.length === 0) {
+    return { segments, status: SKIP_LOOKUP_STATUS.EMPTY };
+  }
+  return { segments, status: SKIP_LOOKUP_STATUS.OK };
 }
 
 async function generateLocalSuggestions(
@@ -1349,18 +1408,10 @@ async function generateLocalSuggestions(
   apiKey = "",
 ) {
   const validHost = validateLoopbackHost(host, client.label);
-  const prompt = buildSuggestQuestionsPrompt(title, url, summary);
-  const chat = (p, opts) =>
-    client.chatStream(validHost, model, p, { ...opts, apiKey });
-  const qLanguage = await resolveEffectiveLanguage(summary, language);
-  const translateFn =
-    translationEngine === TRANSLATION_ENGINES.OPUS
-      ? makeOpusTranslateFn(() => {})
-      : undefined;
-  const text = await generateInTargetLanguage(chat, prompt, qLanguage, {
-    translateFn,
-  });
-  return parseSuggestedQuestions(text);
+  return generateQuestionsFromChat(
+    (p, opts) => client.chatStream(validHost, model, p, { ...opts, apiKey }),
+    { title, url, summary, language, translationEngine },
+  );
 }
 
 const pendingSuggestKeys = new Set();
@@ -1384,6 +1435,7 @@ async function runSuggestQuestionsJob(payload) {
   startKeepAlive();
 
   let questions = [];
+  let suggestStatus = SKIP_LOOKUP_STATUS.EMPTY;
   try {
     try {
       if (providerType === PROVIDERS.LLAMACPP) {
@@ -1431,8 +1483,15 @@ async function runSuggestQuestionsJob(payload) {
         });
         questions = resp?.questions || [];
       }
-    } catch {
+      suggestStatus =
+        questions.length > 0 ? SKIP_LOOKUP_STATUS.OK : SKIP_LOOKUP_STATUS.EMPTY;
+    } catch (err) {
       questions = [];
+      suggestStatus = SKIP_LOOKUP_STATUS.NETWORK;
+      // Telemetry-safe: provider type + error name only, never title/summary.
+      console.warn(
+        `Suggest-questions unavailable: ${providerType || "unknown"} ${err?.name || "Error"}.`,
+      );
     }
 
     // Generating the questions takes its own trip through the model, so the setting gets one more look before this write too.
@@ -1450,6 +1509,7 @@ async function runSuggestQuestionsJob(payload) {
         type: "suggested-prompts-ready",
         promptsCacheKey,
         questions,
+        status: suggestStatus,
       })
       .catch(() => {});
   } catch (err) {
@@ -1460,6 +1520,7 @@ async function runSuggestQuestionsJob(payload) {
           type: "suggested-prompts-ready",
           promptsCacheKey,
           questions,
+          status: suggestStatus,
         })
         .catch(() => {});
     } catch {}
@@ -1560,11 +1621,12 @@ function notifyJobComplete({ title, tabId, windowId }) {
   if (typeof chrome.notifications === "undefined") return;
   const notificationId = `apogee-summary-${crypto.randomUUID()}`;
   notificationTargets.set(notificationId, { tabId, windowId });
+  const rawMsg = title ? `"${title}" is ready to view.` : "Click to view it.";
   chrome.notifications.create(notificationId, {
     type: "basic",
     iconUrl: chrome.runtime.getURL("assets/icon-96.png"),
     title: "Summary ready",
-    message: title ? `"${title}" is ready to view.` : "Click to view it.",
+    message: formatNotificationMessage(rawMsg, ""),
   });
 }
 
@@ -1654,6 +1716,10 @@ if (typeof chrome !== "undefined" && chrome.alarms?.onAlarm?.addListener) {
 }
 
 const activeSidePanelTabs = new Set();
+// Retained port handles so the worker can push tab-switch signals to open
+// side panels (the panel document itself does not reliably observe
+// tabs.onActivated, so it cannot refresh on its own).
+const sidePanelPorts = new Map();
 
 if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
   chrome.runtime.onConnect.addListener((port) => {
@@ -1678,8 +1744,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
       const tabId = parseInt(port.name.replace("side-panel-tab-", ""), 10);
       if (!isNaN(tabId)) {
         activeSidePanelTabs.add(tabId);
+        sidePanelPorts.set(tabId, port);
         port.onDisconnect.addListener(() => {
           activeSidePanelTabs.delete(tabId);
+          if (sidePanelPorts.get(tabId) === port) {
+            sidePanelPorts.delete(tabId);
+          }
         });
       }
       return;
@@ -1723,41 +1793,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
     }
 
     stream.subscribers.add(popupPort);
-    if (stream.text) {
-      try {
-        popupPort.postMessage({ type: "chunk", text: stream.text });
-      } catch {}
-    }
-    if (stream.cancelled) {
-      try {
-        popupPort.postMessage({ type: "cancelled" });
-      } catch {}
-    } else if (stream.error) {
-      try {
-        popupPort.postMessage({
-          type: "error",
-          error: stream.error,
-          userFacing: stream.errorUserFacing,
-        });
-      } catch {}
-    } else if (stream.done) {
-      try {
-        popupPort.postMessage({
-          type: "done",
-          tokensPerSec: stream.tokensPerSec,
-        });
-      } catch {}
-    } else if (stream.firstTokenTime != null) {
-      const elapsedMs = performance.now() - stream.firstTokenTime;
-      if (isWarmedUp(stream.tokenCount, elapsedMs)) {
-        try {
-          popupPort.postMessage({
-            type: "stats",
-            tokensPerSec: tokensPerSecond(stream.tokenCount, elapsedMs),
-          });
-        } catch {}
-      }
-    }
+    replayStreamToPort(stream, popupPort, {
+      userFacing: stream.errorUserFacing,
+    });
 
     popupPort.onDisconnect.addListener(() => {
       stream.subscribers.delete(popupPort);
@@ -1849,6 +1887,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const fallbackTitle = message.title;
       const fallbackUrl = message.url;
       const fallbackText = message.text;
+      // Safety net for the relay tracking above: a finished job is never
+      // work in flight, even if its relay ports vanished without firing
+      // their disconnect handlers.
+      untrackOffscreenRelay(streamId);
       try {
         const registeredJob = streamId
           ? registeredStreamJobs.get(streamId)
@@ -2102,16 +2144,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "sponsorblock-segments": {
-          const segments = message.payload?.videoId
-            ? await fetchSponsorBlockSegments(message.payload.videoId)
-            : [];
-          sendResponse({ segments });
+          const { segments, status } = message.payload?.videoId
+            ? await fetchSponsorBlockSegmentsWithStatus(message.payload.videoId)
+            : { segments: [], status: SKIP_LOOKUP_STATUS.INVALID };
+          sendResponse({ segments, status });
           break;
         }
 
         case "bilibili-subtitles": {
-          const segments = await fetchBilibiliSubtitles(message.payload || {});
-          sendResponse({ segments });
+          const { segments, status } = await fetchBilibiliSubtitlesWithStatus(
+            message.payload || {},
+          );
+          sendResponse({ segments, status });
           break;
         }
 
@@ -2277,22 +2321,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-export function setupContextMenus() {
+const SUMMARIZE_CONTEXT_MENU_ID = "apogee-summarize";
+const SUMMARIZE_SELECTION_CONTEXT_MENU_ID = "apogee-summarize-selection";
+const SUMMARIZE_TABS_CONTEXT_MENU_ID = "apogee-summarize-tabs";
+
+function setupContextMenus() {
   if (typeof chrome === "undefined" || !chrome.contextMenus) return;
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: "apogee-summarize-tabs",
+      id: SUMMARIZE_CONTEXT_MENU_ID,
+      title: "Summarize this page",
+      contexts: ["page"],
+    });
+    chrome.contextMenus.create({
+      id: SUMMARIZE_SELECTION_CONTEXT_MENU_ID,
+      title: "Summarize selection",
+      contexts: ["selection"],
+    });
+    chrome.contextMenus.create({
+      id: SUMMARIZE_TABS_CONTEXT_MENU_ID,
       title: "Summarize with Apogee",
       contexts: ["page", "selection", "tab", "action"],
     });
   });
 }
 
-if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled) {
+if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled?.addListener) {
   chrome.runtime.onInstalled.addListener(() => {
     setupContextMenus();
   });
 }
+if (typeof chrome !== "undefined" && chrome.runtime?.onStartup?.addListener) {
+  chrome.runtime.onStartup.addListener(() => {
+    setupContextMenus();
+  });
+}
+// Service workers wake without onInstalled/onStartup firing, and the Firefox
+// background page reloads on browser restart, so register eagerly too.
+// removeAll makes this idempotent.
 setupContextMenus();
 
 export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
@@ -2347,8 +2413,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
       if (typeof chrome !== "undefined" && chrome.notifications) {
         chrome.notifications.create("apogee-multitab-error", {
           type: "basic",
-          iconUrl:
-            chrome.runtime.getURL("assets/icon.png") || "assets/icon-48.png",
+          iconUrl: chrome.runtime.getURL("assets/icon.png"),
           title: "Apogee",
           message: "Could not extract content from the selected tab(s).",
         });
@@ -2361,7 +2426,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   if (typeof chrome !== "undefined" && chrome.notifications) {
     chrome.notifications.create(notificationId, {
       type: "basic",
-      iconUrl: chrome.runtime.getURL("assets/icon.png") || "assets/icon-48.png",
+      iconUrl: chrome.runtime.getURL("assets/icon.png"),
       title: "Apogee Multi-Tab Summary",
       message: `Extracting and summarizing ${extractedResults.length} selected tab(s)...`,
     });
@@ -2585,7 +2650,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   if (typeof chrome !== "undefined" && chrome.notifications) {
     chrome.notifications.create(`${notificationId}-ready`, {
       type: "basic",
-      iconUrl: chrome.runtime.getURL("assets/icon.png") || "assets/icon-48.png",
+      iconUrl: chrome.runtime.getURL("assets/icon.png"),
       title: "Apogee Multi-Tab Summary Ready",
       message: `Synthesized summary for ${extractedResults.length} tabs. Click to view in Apogee!`,
     });
@@ -2594,9 +2659,23 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
   return { summary: summaryResult, pageData };
 }
 
-if (typeof chrome !== "undefined" && chrome.contextMenus) {
+if (
+  typeof chrome !== "undefined" &&
+  chrome.contextMenus?.onClicked?.addListener
+) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === "apogee-summarize-tabs") {
+    if (info.menuItemId === SUMMARIZE_CONTEXT_MENU_ID) {
+      if (!tab) return;
+      runBackgroundSummarize(tab, { notifyOnFinish: true }).catch((err) =>
+        notifyJobFailed(err),
+      );
+    } else if (info.menuItemId === SUMMARIZE_SELECTION_CONTEXT_MENU_ID) {
+      if (!tab) return;
+      runBackgroundSummarize(tab, {
+        notifyOnFinish: true,
+        selectionText: info.selectionText,
+      }).catch((err) => notifyJobFailed(err));
+    } else if (info.menuItemId === SUMMARIZE_TABS_CONTEXT_MENU_ID) {
       let targetTabs = [tab];
       if (typeof chrome.tabs?.query === "function") {
         const highlighted = await chrome.tabs.query({

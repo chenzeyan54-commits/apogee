@@ -4,9 +4,7 @@ import { isSensitiveCredentialKey, sanitizeLogMessage } from "./log.js";
 import { ALLOWED_OLLAMA_HOSTS } from "./ollamaHost.js";
 
 // The loopback display uses the same shared set as the validators
-// (see ollamaHost.js): only 127.0.0.1 and localhost. IPv6 loopback
-// ([::1] / ::1) is rejected by the validators, so diagnostics reports it as
-// a custom host instead of implying it would connect (#210).
+// (see ollamaHost.js): 127.0.0.1, localhost, and the IPv6 loopback [::1].
 
 // customInstructions is free text the user wrote, privateHosts names sites they consider private (a clinic, an employer), and ollamaHost can name a machine on their network. None belongs in something pasted into a public issue, but all matter to a bug report, so report their shape instead of their contents.
 function redact(key, value) {

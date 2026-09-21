@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert";
 import {
+  formatSummariesBulkAsJSON,
   formatSummaryAsJSON,
   formatSummaryAsMarkdown,
-  formatSummaryAsPlainText,
   safeExportFilename,
 } from "../../lib/util/exportFormat.js";
 
@@ -69,19 +69,6 @@ test("formatSummaryAsMarkdown includes YAML frontmatter when includeFrontmatter 
     ),
   );
 });
-test("formatSummaryAsPlainText removes Markdown formatting", () => {
-  const result = formatSummaryAsPlainText({
-    title: "Example Article",
-    url: "https://example.com/article",
-    summary: "## Key points\n\n- **First point**\n- _Second point_",
-  });
-
-  assert.strictEqual(
-    result,
-    "Example Article\n\nSource: https://example.com/article\n\nKey points\n\n- First point\n- Second point\n",
-  );
-});
-
 test("formatSummaryAsJSON includes all fields and preserves summary structure", () => {
   const result = formatSummaryAsJSON({
     title: "Example Article",
@@ -129,4 +116,39 @@ test("safeExportFilename strips illegal characters and falls back", () => {
   );
   assert.strictEqual(safeExportFilename(""), "summary");
   assert.strictEqual(safeExportFilename("   "), "summary");
+});
+
+test("formatSummariesBulkAsJSON keeps every item in order", () => {
+  const result = JSON.parse(
+    formatSummariesBulkAsJSON([
+      {
+        title: "First",
+        url: "",
+        model: "m1",
+        format: "bullets",
+        language: "English",
+        summary: "one",
+        suggestedQuestions: ["q1"],
+      },
+      { title: "Second", summary: "two" },
+    ]),
+  );
+  assert.strictEqual(result.length, 2);
+  assert.strictEqual(result[0].title, "First");
+  assert.deepStrictEqual(result[0].suggestedQuestions, ["q1"]);
+  assert.deepStrictEqual(result[1], {
+    title: "Second",
+    url: "",
+    model: "",
+    format: "",
+    language: "",
+    summary: "two",
+    suggestedQuestions: [],
+  });
+});
+
+test("formatSummariesBulkAsJSON handles empty and non-array input", () => {
+  assert.deepStrictEqual(JSON.parse(formatSummariesBulkAsJSON([])), []);
+  assert.deepStrictEqual(JSON.parse(formatSummariesBulkAsJSON()), []);
+  assert.deepStrictEqual(JSON.parse(formatSummariesBulkAsJSON("nope")), []);
 });

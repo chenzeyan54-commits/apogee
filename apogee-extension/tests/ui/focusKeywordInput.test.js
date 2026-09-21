@@ -28,7 +28,7 @@ test("app.html declares the focus keyword input with the documented cap (#161)",
 
 test("the focus keyword input is cleared on tab switch (#161)", () => {
   const onActivatedMatch = appCode.match(
-    /chrome\.tabs\.onActivated\.addListener\(\(activeInfo\) => \{[\s\S]*?\n {4}\}\);/,
+    /chrome\.tabs\.onActivated\.addListener\(\(\) => \{[\s\S]*?\n {4}\}\);/,
   );
   assert.ok(onActivatedMatch, "chrome.tabs.onActivated listener found");
   assert.match(onActivatedMatch[0], /focusKeywordInput\.value = ""/);
