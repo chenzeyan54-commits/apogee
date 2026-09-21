@@ -20,10 +20,10 @@ export async function hashUrl(url) {
 // Everything that changes the generated text has to be part of the key, or a cached answer from the old settings comes back and the change looks ignored. That means the url, the response format, the model, the output language, and the custom instructions, and the translation engine. Anything else that starts shaping the output belongs here too.
 //
 // Legacy keys do not identify their translation engine and cannot safely be assigned to either one, so engine-aware lookups intentionally do not reuse them. They remain available in history until normal eviction or a cache wipe.
-async function instructionsSuffix(customInstructions) {
-  const extra = (customInstructions || "").trim();
+async function hashedSuffix(value, tag) {
+  const extra = (value || "").trim();
   if (!extra) return "";
-  return `:i${(await sha256Hex(extra)).slice(0, 12)}`;
+  return `:${tag}${(await sha256Hex(extra)).slice(0, 12)}`;
 }
 
 function translationEngineKey(translationEngine = TRANSLATION_ENGINES.OPUS) {
@@ -42,8 +42,9 @@ async function makeCacheKey(
   lang,
   customInstructions,
   translationEngine,
+  focusKeyword,
 ) {
-  return `${prefix}:${fmt}:${lang}:${model}:${translationEngineKey(translationEngine)}:${await hashUrl(url)}${await instructionsSuffix(customInstructions)}`;
+  return `${prefix}:${fmt}:${lang}:${model}:${translationEngineKey(translationEngine)}:${await hashUrl(url)}${await hashedSuffix(customInstructions, "i")}${await hashedSuffix(focusKeyword, "k")}`;
 }
 
 export async function getSummaryCacheKey(
@@ -53,6 +54,7 @@ export async function getSummaryCacheKey(
   lang = "auto",
   customInstructions = "",
   translationEngine = TRANSLATION_ENGINES.OPUS,
+  focusKeyword = "",
 ) {
   return makeCacheKey(
     "summary",
@@ -62,6 +64,7 @@ export async function getSummaryCacheKey(
     lang,
     customInstructions,
     translationEngine,
+    focusKeyword,
   );
 }
 
@@ -77,6 +80,7 @@ export function parseSummaryCacheKey(cacheKey) {
     return fallback;
   }
   const rest = cacheKey
+    .replace(/:k[0-9a-f]{12}$/, "")
     .replace(/:i[0-9a-f]{12}$/, "")
     .replace(/:[0-9a-f]{32}$/, "")
     .replace(
@@ -95,6 +99,7 @@ export async function getPromptsCacheKey(
   lang = "auto",
   customInstructions = "",
   translationEngine = TRANSLATION_ENGINES.OPUS,
+  focusKeyword = "",
 ) {
   return makeCacheKey(
     "suggested-prompts",
@@ -104,6 +109,7 @@ export async function getPromptsCacheKey(
     lang,
     customInstructions,
     translationEngine,
+    focusKeyword,
   );
 }
 export async function getContentCacheKey(url) {

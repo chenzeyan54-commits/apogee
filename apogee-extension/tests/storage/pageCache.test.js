@@ -215,6 +215,146 @@ test("cache keys keep no readable trace of the instructions they came from", asy
   assert.match(key, /:i[0-9a-f]{12}$/);
 });
 
+test("cache keys change with the focus keyword that shaped the prompt (#161)", async () => {
+  const url = "https://example.com/article";
+  const base = await getSummaryCacheKey(
+    url,
+    "bullets",
+    "model-x",
+    "auto",
+    "",
+    "opus",
+  );
+  const withKeyword = await getSummaryCacheKey(
+    url,
+    "bullets",
+    "model-x",
+    "auto",
+    "",
+    "opus",
+    "battery pricing",
+  );
+  const withOtherKeyword = await getSummaryCacheKey(
+    url,
+    "bullets",
+    "model-x",
+    "auto",
+    "",
+    "opus",
+    "safety recalls",
+  );
+
+  assert.notStrictEqual(base, withKeyword);
+  assert.notStrictEqual(withKeyword, withOtherKeyword);
+  assert.strictEqual(
+    withKeyword,
+    await getSummaryCacheKey(
+      url,
+      "bullets",
+      "model-x",
+      "auto",
+      "",
+      "opus",
+      "battery pricing",
+    ),
+  );
+
+  assert.notStrictEqual(
+    await getPromptsCacheKey(
+      url,
+      "bullets",
+      "model-x",
+      "auto",
+      "",
+      "opus",
+      "battery pricing",
+    ),
+    await getPromptsCacheKey(url, "bullets", "model-x", "auto", "", "opus"),
+  );
+});
+
+test("empty or whitespace-only focus keyword omits the keyword suffix (#161)", async () => {
+  const url = "https://example.com/article";
+  const hash = await hashUrl(url);
+
+  for (const focusKeyword of [undefined, "", "   \n  "]) {
+    assert.strictEqual(
+      await getSummaryCacheKey(
+        url,
+        "bullets",
+        "model-x",
+        "auto",
+        "",
+        "opus",
+        focusKeyword,
+      ),
+      `summary:bullets:auto:model-x:opus:${hash}`,
+    );
+  }
+});
+
+test("custom instructions and a focus keyword produce independent, combinable cache-key suffixes (#161)", async () => {
+  const url = "https://example.com/article";
+  const both = await getSummaryCacheKey(
+    url,
+    "bullets",
+    "model-x",
+    "auto",
+    "Focus on the numbers",
+    "opus",
+    "battery pricing",
+  );
+  assert.match(both, /:i[0-9a-f]{12}:k[0-9a-f]{12}$/);
+
+  // Changing only the keyword leaves the instructions segment identical.
+  const otherKeyword = await getSummaryCacheKey(
+    url,
+    "bullets",
+    "model-x",
+    "auto",
+    "Focus on the numbers",
+    "opus",
+    "safety recalls",
+  );
+  const [bothInstructionsPart] = both.match(/:i[0-9a-f]{12}/);
+  assert.ok(otherKeyword.includes(bothInstructionsPart));
+  assert.notStrictEqual(both, otherKeyword);
+});
+
+test("parseSummaryCacheKey round-trips a key carrying a focus-keyword suffix, with and without instructions (#161)", async () => {
+  const url = "https://example.com/article";
+  const expected = { format: "bullets", language: "auto", model: "qwen3:8b" };
+
+  assert.deepStrictEqual(
+    parseSummaryCacheKey(
+      await getSummaryCacheKey(
+        url,
+        "bullets",
+        "qwen3:8b",
+        "auto",
+        "",
+        "opus",
+        "battery pricing",
+      ),
+    ),
+    expected,
+  );
+  assert.deepStrictEqual(
+    parseSummaryCacheKey(
+      await getSummaryCacheKey(
+        url,
+        "bullets",
+        "qwen3:8b",
+        "auto",
+        "Focus on the numbers",
+        "opus",
+        "battery pricing",
+      ),
+    ),
+    expected,
+  );
+});
+
 test("isSensitiveUrl matches known webmail/messaging hosts and their subdomains", () => {
   assert.ok(isSensitiveUrl("https://mail.google.com/mail/u/0/"));
   assert.ok(isSensitiveUrl("https://web.whatsapp.com/"));

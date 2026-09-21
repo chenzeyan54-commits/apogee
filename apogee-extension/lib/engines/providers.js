@@ -164,6 +164,7 @@ class WebLLMProvider {
     language,
     translationEngine,
     isSelection,
+    focusKeyword,
     onStats,
   }) {
     return startWebllmStream(
@@ -179,6 +180,7 @@ class WebLLMProvider {
         language,
         translationEngine,
         isSelection,
+        focusKeyword,
       },
       { onStats },
     );
@@ -224,6 +226,7 @@ class TransformersProvider {
     language,
     translationEngine,
     isSelection,
+    focusKeyword,
     onStats,
   }) {
     return startTransformersStream(
@@ -239,6 +242,7 @@ class TransformersProvider {
         language,
         translationEngine,
         isSelection,
+        focusKeyword,
       },
       { onStats },
     );
@@ -295,6 +299,7 @@ class DirectOllamaProvider {
     language,
     translationEngine,
     isSelection,
+    focusKeyword,
     onStats,
   }) {
     return startOllamaStream(
@@ -311,6 +316,7 @@ class DirectOllamaProvider {
         language,
         translationEngine,
         isSelection,
+        focusKeyword,
       },
       { onStats },
     );
@@ -379,6 +385,7 @@ class DirectLlamaCppProvider {
     language,
     translationEngine,
     isSelection,
+    focusKeyword,
     onStats,
   }) {
     return startLlamaCppStream(
@@ -396,6 +403,7 @@ class DirectLlamaCppProvider {
         language,
         translationEngine,
         isSelection,
+        focusKeyword,
       },
       { onStats },
     );

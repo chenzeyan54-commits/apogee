@@ -644,6 +644,7 @@ async function startLocalHttpStream(
     language,
     translationEngine,
     isSelection,
+    focusKeyword,
     apiKey,
   },
   client = OLLAMA_PROVIDER,
@@ -727,6 +728,7 @@ async function startLocalHttpStream(
           language: await resolveEffectiveLanguage(content, language),
           customInstructions,
           isSelection,
+          focusKeyword,
           host: validHost,
           signal: stream.controller.signal,
         },
@@ -796,6 +798,7 @@ async function startTransformersStream(
     language,
     translationEngine,
     isSelection,
+    focusKeyword,
   },
 ) {
   const { stream, finish, emitChunk } = createBufferedStream(streamId, {
@@ -844,6 +847,7 @@ async function startTransformersStream(
               language: effectiveLanguage,
               customInstructions,
               isSelection,
+              focusKeyword,
               signal: stream.controller.signal,
             },
             {
