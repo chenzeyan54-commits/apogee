@@ -150,6 +150,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Empty-state wordmark and bulk JSON export (#310) ([7142af0](https://github.com/darshi1337/apogee/commit/7142af07c1de5ad11e178e03b3e6753379e7fb97))
 - Defrag-style segmented download progress (#316) ([d45251a](https://github.com/darshi1337/apogee/commit/d45251ad2d8eba1a9ab8a06dfd2fd71138a377ed))
 - Gate extraction on denial, distinguish lookup failures (#304, #306) ([16b4459](https://github.com/darshi1337/apogee/commit/16b445905d8848e72b2f71903703b86aee71cb2e))
+- Bundle pixel-dissolve.svg in extension and cache highlight text index ([d394bef](https://github.com/darshi1337/apogee/commit/d394bef5ac0639d0ef1427cf988ec6bf792de2bc))
 
 ### Security
 
