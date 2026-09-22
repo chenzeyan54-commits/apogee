@@ -163,9 +163,7 @@ export async function storedBytesInUse(keys) {
     const fn = store?.getBytesInUse;
     if (typeof fn !== "function") return null;
     const bytes =
-      keys === undefined
-        ? await fn.call(store)
-        : await fn.call(store, keys);
+      keys === undefined ? await fn.call(store) : await fn.call(store, keys);
     if (typeof bytes === "number" && Number.isFinite(bytes)) return bytes;
   } catch {}
   return null;
@@ -424,8 +422,7 @@ export async function removeCachedSummary(cacheKey) {
   if (!cacheKey) return false;
   const release = await acquireIndexLock();
   try {
-    const { cacheOrder = [] } =
-      await chrome.storage.local.get("cacheOrder");
+    const { cacheOrder = [] } = await chrome.storage.local.get("cacheOrder");
     const entry = cacheOrder.find((e) => e && e.s === cacheKey);
     if (!entry) return false;
     const removeKeys = [entry.s, entry.p].filter(Boolean);

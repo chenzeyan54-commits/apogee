@@ -45,8 +45,7 @@ test("search finds summaries older than the last 8 (#313)", async () => {
   const storedSummaries = Object.fromEntries(
     cacheOrder.map((e) => [e.s, `Body text for ${e.s}`]),
   );
-  storedSummaries.k0 =
-    "Body text with a UNIQUEWORD cavern-wall ancients";
+  storedSummaries.k0 = "Body text with a UNIQUEWORD cavern-wall ancients";
 
   const results = await searchPastSummaries({
     query: "UNIQUEWORD",

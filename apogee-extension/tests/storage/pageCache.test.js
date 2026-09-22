@@ -641,9 +641,16 @@ test("persistSummary evicts by bytes when a few large entries exceed the budget 
   const big = "x".repeat(1_500_000); // ~1.5 MB each
 
   for (let i = 0; i < 4; i++) {
-    await persistSummary(`big-key-${i}`, `big-prompts-${i}`, `${big}${i}`, `Title ${i}`, null, {
-      embedTextsFn: null,
-    });
+    await persistSummary(
+      `big-key-${i}`,
+      `big-prompts-${i}`,
+      `${big}${i}`,
+      `Title ${i}`,
+      null,
+      {
+        embedTextsFn: null,
+      },
+    );
   }
 
   // 4 x ~1.5 MB clears the 4 MB budget with the count cap untouched.
@@ -663,8 +670,7 @@ test("persistSummary rejects an entry over the per-entry byte cap with a user-vi
     persistSummary("huge-key", "huge-prompts", huge, "Title", null, {
       embedTextsFn: null,
     }),
-    (err) =>
-      err instanceof StorageQuotaError && /too large/.test(err.message),
+    (err) => err instanceof StorageQuotaError && /too large/.test(err.message),
   );
 });
 
@@ -749,9 +755,16 @@ test("a delete racing a write leaves the index consistent (#313)", async () => {
 
 test("clearCachedPages removes only indexed keys without a full-store scan (#312)", async () => {
   const data = installFakeStorage({ settings: { saveHistory: true } });
-  await persistSummary("summary:k", "suggested-prompts:k", "Body", "Title", null, {
-    embedTextsFn: null,
-  });
+  await persistSummary(
+    "summary:k",
+    "suggested-prompts:k",
+    "Body",
+    "Title",
+    null,
+    {
+      embedTextsFn: null,
+    },
+  );
   await persistContent("https://example.com/a", {
     title: "A",
     content: "text",
