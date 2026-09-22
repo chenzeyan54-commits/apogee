@@ -117,6 +117,59 @@ export async function getContentCacheKey(url) {
 }
 
 export const MAX_CACHED_PAGES = 50;
+// Byte budgets keep a few multi-MB summaries from blowing the ~10 MB
+// chrome.storage.local quota while 50 tiny entries are kept. Sizes ride on
+// the order index (`b`: bytes), so eviction never reads every value back.
+// Legacy entries without `b` are measured with getBytesInUse when the
+// browser offers it, else only the count cap applies.
+export const MAX_CACHE_BYTES = 4_000_000;
+export const MAX_CONTENT_CACHE_BYTES = 2_000_000;
+// A finished summary is capped at 1M chars upstream; 2.5 MB of UTF-8 leaves
+// headroom for non-Latin text plus the order-entry metadata.
+export const MAX_ENTRY_BYTES = 2_500_000;
+
+/** Thrown when a write fails because browser storage is full. The message is safe to show the user. */
+export class StorageQuotaError extends Error {
+  constructor(
+    message = "Browser storage is full, so this summary was not saved. Delete old summaries or clear cached data, then try again.",
+  ) {
+    super(message);
+    this.name = "StorageQuotaError";
+  }
+}
+
+export function isQuotaError(err) {
+  if (!err) return false;
+  if (err instanceof StorageQuotaError) return true;
+  if (err?.name === "QuotaExceededError") return true;
+  return /quota/i.test(err?.message || "");
+}
+
+/** Best-effort UTF-8 byte length of a value as stored (JSON for non-strings). */
+export function estimateByteSize(value) {
+  try {
+    const s = typeof value === "string" ? value : (JSON.stringify(value) ?? "");
+    return new TextEncoder().encode(s).length;
+  } catch {
+    return 0;
+  }
+}
+
+// Native byte accounting when the browser offers it, else null so callers
+// fall back to index estimates. Never throws: tests and some browsers lack it.
+export async function storedBytesInUse(keys) {
+  try {
+    const store = chrome?.storage?.local;
+    const fn = store?.getBytesInUse;
+    if (typeof fn !== "function") return null;
+    const bytes =
+      keys === undefined
+        ? await fn.call(store)
+        : await fn.call(store, keys);
+    if (typeof bytes === "number" && Number.isFinite(bytes)) return bytes;
+  } catch {}
+  return null;
+}
 
 const SENSITIVE_TITLE_PATTERNS = [
   /\b(inbox|gmail|outlook|protonmail|yahoo\s*mail|webmail)\b/i,
@@ -163,6 +216,13 @@ export async function persistSummary(
       }
     }
 
+    const textBytes = estimateByteSize(text);
+    if (textBytes > MAX_ENTRY_BYTES) {
+      throw new StorageQuotaError(
+        "That summary is too large for browser storage, so it was kept for this session only. Copy it out before closing the popup.",
+      );
+    }
+
     const { cacheOrder = [] } = await chrome.storage.local.get("cacheOrder");
     const order = cacheOrder
       .filter((e) => e && e.s !== cacheKey)
@@ -176,20 +236,68 @@ export async function persistSummary(
     const safeTitle = await sanitizeTitleForStorage(title, options);
     const entry = { s: cacheKey, p: promptsCacheKey, t: safeTitle };
     if (v) entry.v = v;
+    entry.b =
+      textBytes + estimateByteSize(safeTitle) + (v ? estimateByteSize(v) : 0);
     order.push(entry);
 
-    const removeKeys = [];
-    while (order.length > MAX_CACHED_PAGES) {
-      const old = order.shift();
-      if (old?.s) removeKeys.push(old.s);
-      if (old?.p) removeKeys.push(old.p);
-    }
+    const removeKeys = await evictSummariesOverBudget(order);
 
-    await chrome.storage.local.set({ [cacheKey]: text, cacheOrder: order });
+    try {
+      await chrome.storage.local.set({ [cacheKey]: text, cacheOrder: order });
+    } catch (err) {
+      // A quota-full disk must surface a message the user can act on, not a
+      // silent loss: callers (e.g. finalize) show this text and keep the text
+      // for retry.
+      if (isQuotaError(err)) throw new StorageQuotaError();
+      throw err;
+    }
     if (removeKeys.length > 0) await chrome.storage.local.remove(removeKeys);
   } finally {
     release();
   }
+}
+
+// Evict oldest-first until the order fits both the count cap and the byte
+// budget. Returns the storage keys to delete. New entries carry `b`, so no
+// value reads are needed; legacy entries without `b` are measured natively
+// when possible, otherwise only the count cap applies.
+async function evictSummariesOverBudget(order) {
+  const legacyEntries = order.filter((e) => e && typeof e.b !== "number");
+  let legacyBytes = 0;
+  let bytesKnown = legacyEntries.length === 0;
+  if (!bytesKnown) {
+    const keys = [];
+    for (const e of legacyEntries) {
+      if (e.s) keys.push(e.s);
+      if (e.p) keys.push(e.p);
+    }
+    const measured = await storedBytesInUse(keys);
+    if (measured != null) {
+      legacyBytes = measured;
+      bytesKnown = true;
+    }
+  }
+  const avgLegacy =
+    legacyEntries.length > 0 && legacyBytes > 0
+      ? legacyBytes / legacyEntries.length
+      : 0;
+  let total = legacyBytes;
+  for (const e of order) total += typeof e?.b === "number" ? e.b : 0;
+
+  const removeKeys = [];
+  // The entry just written is always kept (length > 1): a single entry over
+  // budget still stores, and the quota error below surfaces visibly.
+  while (
+    order.length > MAX_CACHED_PAGES ||
+    (bytesKnown && total > MAX_CACHE_BYTES && order.length > 1)
+  ) {
+    const old = order.shift();
+    if (!old) break;
+    if (old?.s) removeKeys.push(old.s);
+    if (old?.p) removeKeys.push(old.p);
+    total -= typeof old?.b === "number" ? old.b : avgLegacy;
+  }
+  return removeKeys;
 }
 
 export async function persistContent(url, pageData) {
@@ -201,18 +309,25 @@ export async function persistContent(url, pageData) {
     const order = contentCacheOrder.filter((k) => k !== contentKey);
     order.push(contentKey);
 
-    const removeKeys = [];
-    while (order.length > MAX_CACHED_PAGES) {
-      removeKeys.push(order.shift());
-    }
-
     const persistable = { ...pageData };
     delete persistable.url;
 
-    await chrome.storage.local.set({
-      [contentKey]: persistable,
-      contentCacheOrder: order,
+    // Byte-aware eviction without reading every value back.
+    const removeKeys = await evictKeysOverBudget(order, {
+      maxCount: MAX_CACHED_PAGES,
+      maxBytes: MAX_CONTENT_CACHE_BYTES,
+      extraBytes: estimateByteSize(persistable),
     });
+
+    try {
+      await chrome.storage.local.set({
+        [contentKey]: persistable,
+        contentCacheOrder: order,
+      });
+    } catch (err) {
+      if (isQuotaError(err)) throw new StorageQuotaError();
+      throw err;
+    }
     if (removeKeys.length > 0) await chrome.storage.local.remove(removeKeys);
   } finally {
     release();
@@ -226,28 +341,100 @@ export async function getCachedContent(url) {
   return { ...stored[contentKey], url };
 }
 
-const CACHED_PAGE_PREFIXES = ["summary:", "suggested-prompts:", "content:"];
-const CACHED_PAGE_INDEX_KEYS = ["cacheOrder", "contentCacheOrder"];
-
-/** Whether a storage key holds reading history rather than a setting. */
-export function isCachedPageKey(key) {
-  return (
-    CACHED_PAGE_PREFIXES.some((prefix) => key.startsWith(prefix)) ||
-    CACHED_PAGE_INDEX_KEYS.includes(key)
-  );
+/**
+ * Oldest-first eviction for plain key-list indexes (page content, view
+ * states): fits the count cap always, and the byte budget when the browser
+ * reports stored sizes natively. `extraBytes` sizes the entry about to be
+ * written, without reading every value back. The entry just written is
+ * always kept. Returns the keys to delete.
+ */
+export async function evictKeysOverBudget(
+  order,
+  { maxCount, maxBytes, extraBytes = 0 },
+) {
+  const removeKeys = [];
+  const measured = await storedBytesInUse(order);
+  if (measured != null) {
+    let total = measured + extraBytes;
+    const avg = order.length > 0 ? measured / order.length : 0;
+    while (
+      (order.length > maxCount || (total > maxBytes && order.length > 1)) &&
+      order.length > 0
+    ) {
+      removeKeys.push(order.shift());
+      total -= avg;
+    }
+  } else {
+    while (order.length > maxCount) {
+      removeKeys.push(order.shift());
+    }
+  }
+  return removeKeys;
 }
 
-// Shared wipe core for clearCachedPages/clearAllViewStates: read everything,
-// remove the keys matching the predicate, return the count — under the
-// caller's writer lock, so a concurrent write cannot resurrect entries into
-// an index read before the wipe.
-export async function clearKeysByPredicate(acquireLock, isKey) {
+/**
+ * Shared wipe core for clearCachedPages/clearAllViewStates: delete every key
+ * named by the given order indexes, plus the indexes themselves. Handles
+ * both entry-object indexes (cacheOrder) and plain key lists. Reads only
+ * those indexes and the keys they name — never a full-store `get(null)`
+ * scan — under the caller's writer lock, so a concurrent write cannot
+ * resurrect entries into an index read before the wipe. Returns the number
+ * of storage keys removed. Settings are left alone.
+ */
+export async function clearIndexedKeys(acquireLock, indexKeys) {
   const release = await acquireLock();
   try {
-    const all = await chrome.storage.local.get(null);
-    const keys = Object.keys(all).filter(isKey);
-    if (keys.length > 0) await chrome.storage.local.remove(keys);
-    return keys.length;
+    const indexes = await chrome.storage.local.get(indexKeys);
+    const keys = [];
+    for (const name of indexKeys) {
+      const entries = indexes[name];
+      if (Array.isArray(entries)) {
+        for (const e of entries) {
+          if (typeof e === "string") {
+            if (e) keys.push(e);
+          } else if (e) {
+            if (e.s) keys.push(e.s);
+            if (e.p) keys.push(e.p);
+          }
+        }
+      }
+      keys.push(name);
+    }
+    if (keys.length === 0) return 0;
+    const stored = await chrome.storage.local.get(keys);
+    // Real storage omits missing keys; some test fakes return them as
+    // undefined, so absence means undefined here.
+    const existing = keys.filter((k) => stored[k] !== undefined);
+    if (existing.length > 0) await chrome.storage.local.remove(existing);
+    return existing.length;
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Delete one saved summary and its order-index entry as a single
+ * read-modify-write under the page-cache lock, so a write landing between
+ * the key delete and the index update cannot resurrect the entry or orphan
+ * the keys. Best-effort across contexts (popup vs worker): chrome.storage
+ * has no transactions, but one module-owned critical section replaces the
+ * old two-step UI sequence. Returns true when anything was removed.
+ */
+export async function removeCachedSummary(cacheKey) {
+  if (!cacheKey) return false;
+  const release = await acquireIndexLock();
+  try {
+    const { cacheOrder = [] } =
+      await chrome.storage.local.get("cacheOrder");
+    const entry = cacheOrder.find((e) => e && e.s === cacheKey);
+    if (!entry) return false;
+    const removeKeys = [entry.s, entry.p].filter(Boolean);
+    const updated = cacheOrder.filter((e) => e && e.s !== cacheKey);
+    // Index first: a concurrent reader never sees the index point at keys
+    // that are already gone.
+    await chrome.storage.local.set({ cacheOrder: updated });
+    if (removeKeys.length > 0) await chrome.storage.local.remove(removeKeys);
+    return true;
   } finally {
     release();
   }
@@ -258,7 +445,10 @@ export async function clearKeysByPredicate(acquireLock, isKey) {
  * along with the two order indexes. Settings are left alone.
  */
 export async function clearCachedPages() {
-  return clearKeysByPredicate(acquireIndexLock, isCachedPageKey);
+  return clearIndexedKeys(acquireIndexLock, [
+    "cacheOrder",
+    "contentCacheOrder",
+  ]);
 }
 
 const SENSITIVE_HOST_PATTERNS = [

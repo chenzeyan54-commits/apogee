@@ -1,4 +1,11 @@
-import { clearKeysByPredicate, hashUrl, shouldPersist } from "./pageCache.js";
+import {
+  clearIndexedKeys,
+  estimateByteSize,
+  evictKeysOverBudget,
+  hashUrl,
+  isQuotaError,
+  shouldPersist,
+} from "./pageCache.js";
 import { createLock } from "../util/mutex.js";
 
 function viewStateKey(tabId) {
@@ -27,6 +34,10 @@ export function isOrphanedViewStateKey(key) {
 }
 
 const MAX_VIEW_STATES = 50;
+// View states duplicate summary text per tab, so they get their own byte
+// budget well inside the storage quota. Measured natively when possible,
+// else the count cap alone applies.
+export const MAX_VIEW_STATE_BYTES = 1_000_000;
 
 const acquireViewStateLock = createLock();
 
@@ -71,12 +82,29 @@ async function writeViewState(tabId, partial, expectedJob = null) {
 
     const order = viewStateOrder.filter((k) => k !== key);
     order.push(key);
-    const removeKeys = [];
-    while (order.length > MAX_VIEW_STATES) {
-      removeKeys.push(order.shift());
-    }
+    // Byte-aware eviction without reading every state back.
+    const removeKeys = await evictKeysOverBudget(order, {
+      maxCount: MAX_VIEW_STATES,
+      maxBytes: MAX_VIEW_STATE_BYTES,
+      extraBytes: estimateByteSize(state),
+    });
 
-    await chrome.storage.local.set({ [key]: state, viewStateOrder: order });
+    try {
+      await chrome.storage.local.set({ [key]: state, viewStateOrder: order });
+    } catch (err) {
+      if (!isQuotaError(err)) throw err;
+      // Ephemeral UI state, not the durable summary (finalize owns that and
+      // already surfaces quota failures visibly): evict half the oldest
+      // states and retry once, else drop this write with a warning.
+      const extra = order.splice(0, Math.ceil(order.length / 2));
+      removeKeys.push(...extra);
+      try {
+        await chrome.storage.local.set({ [key]: state, viewStateOrder: order });
+      } catch (retryErr) {
+        console.warn("View state dropped: browser storage is full.", retryErr);
+        return null;
+      }
+    }
     if (removeKeys.length > 0) await chrome.storage.local.remove(removeKeys);
     return state;
   } finally {
@@ -111,12 +139,13 @@ export function isViewStateKey(key) {
 }
 
 /**
- * Delete every tab's saved view state, along with its order index. Held under
- * the same lock as the writers, for the reason `clearKeysByPredicate`
- * explains.
+ * Delete every tab's saved view state, along with its order index. Reads
+ * only the order index and the keys it names — never a full-store
+ * `get(null)` scan — under the same lock as the writers, so a concurrent
+ * write cannot resurrect entries into an index read before the wipe.
  */
 export async function clearAllViewStates() {
-  return clearKeysByPredicate(acquireViewStateLock, isViewStateKey);
+  return clearIndexedKeys(acquireViewStateLock, ["viewStateOrder"]);
 }
 
 export async function removeViewState(tabId) {
@@ -140,6 +169,10 @@ export async function removeViewState(tabId) {
  * summarization before it used the owning tab's id), and drop their entries
  * from the order index. Runs under the same lock as the writers. Returns the
  * number of storage keys removed.
+ *
+ * This keeps one full-store read: orphans are by definition absent from the
+ * order index, so only a scan finds them. It runs on tab close and on
+ * install/startup — never on the write hot path.
  */
 export async function cleanupOrphanedViewStates() {
   const release = await acquireViewStateLock();

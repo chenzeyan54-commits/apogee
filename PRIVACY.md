@@ -90,7 +90,7 @@ Settings includes an **Activity & Privacy Audit** panel. It gives full visual in
 
 ## Local Data Storage Controls
 
-- **Cached Summaries and Page Text**: A local cache makes popup reopens fast. Apogee keeps it in extension storage (`chrome.storage.local`). It holds summaries, suggested prompts, pulled page text for articles, and your recent questions and answers. This data never goes out, and size caps apply. Web content keys come from a truncated SHA-256 of the URL.
+- **Cached Summaries and Page Text**: A local cache makes popup reopens fast. Apogee keeps it in extension storage (`chrome.storage.local`). It holds summaries, suggested prompts, pulled page text for articles, and your recent questions and answers. The data stays on your device. When the cache is full, it deletes the oldest entries first. Entry-count and byte budgets apply. Each entry has a size cap. If the disk is full, you get a message. The cache never deletes a summary without telling you. Web content keys come from a truncated SHA-256 of the URL.
 
   Pasted and local-file summaries use a content-derived local identity. They invent no web origin. Reopened past summaries show no clickable links. With no page context to check a link against, every link stays plain text.
 
