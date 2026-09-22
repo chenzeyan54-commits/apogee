@@ -95,19 +95,12 @@ test("app.html includes settings configuration controls", () => {
   });
 });
 
-test("app.html includes a decorative wordmark for the empty state (#243)", () => {
+test("app.html has no footer wordmark overlay", () => {
   const { document } = parseHTML(popupHtmlRaw);
-  const mark = document.getElementById("wordmarkEmpty");
-  assert.ok(mark, "Empty-state wordmark #wordmarkEmpty must exist");
   assert.strictEqual(
-    mark.getAttribute("aria-hidden"),
-    "true",
-    "Wordmark must be hidden from assistive tech",
-  );
-  assert.strictEqual(mark.textContent.trim(), "apogee");
-  assert.ok(
-    mark.classList.contains("hidden"),
-    "Wordmark starts hidden until past summaries load",
+    document.getElementById("wordmarkEmpty"),
+    null,
+    "Footer wordmark #wordmarkEmpty must stay removed",
   );
 });
 

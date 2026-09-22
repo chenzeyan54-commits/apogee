@@ -1045,28 +1045,6 @@ html:not([data-surface="side-panel"]) #uploadFileBtn {
   text-align: center;
 }
 
-/* Decorative outlined wordmark shown while no past summaries exist.
-   Pure CSS like the docs footer mark: where -webkit-text-stroke does not
-   apply, color: transparent wins and the mark vanishes instead of going
-   solid. aria-hidden in markup keeps it out of screen readers. */
-.wordmark-empty {
-  margin: 8px 16px 20px;
-  font-family: var(--font-head);
-  font-weight: 700;
-  font-size: 64px;
-  line-height: 0.86;
-  letter-spacing: -0.04em;
-  text-align: right;
-  color: transparent;
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.26);
-  user-select: none;
-  pointer-events: none;
-}
-
-.theme-light .wordmark-empty {
-  -webkit-text-stroke-color: rgba(0, 0, 0, 0.22);
-}
-
 .section-title-group {
   display: flex;
   align-items: center;
