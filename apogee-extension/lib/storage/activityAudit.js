@@ -60,13 +60,16 @@ export async function getActivityAuditSummary() {
   let storageCount = 0;
   if (typeof chrome !== "undefined" && chrome.storage?.local) {
     try {
-      const allData = await chrome.storage.local.get(null);
-      storageCount = Object.keys(allData).filter(
-        (k) =>
-          k.startsWith("summary:") ||
-          k.startsWith("suggested-prompts:") ||
-          k.startsWith("content:"),
-      ).length;
+      // Count from the order indexes, not a full-store `get(null)` scan.
+      const [{ cacheOrder = [] }, { contentCacheOrder = [] }] =
+        await Promise.all([
+          chrome.storage.local.get("cacheOrder"),
+          chrome.storage.local.get("contentCacheOrder"),
+        ]);
+      storageCount =
+        cacheOrder.filter((e) => e?.s).length +
+        cacheOrder.filter((e) => e?.p).length +
+        contentCacheOrder.filter((k) => typeof k === "string").length;
     } catch {
       storageCount = 0;
     }

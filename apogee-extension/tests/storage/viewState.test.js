@@ -428,3 +428,38 @@ test("clearAllViewStates is idempotent when nothing to clear", async () => {
   assert.strictEqual(data.viewStateOrder, undefined);
   assert.deepStrictEqual(data.settings, { saveHistory: true });
 });
+
+test("view state evicts oldest entries once the byte budget is exceeded (#312)", async () => {
+  const data = installFakeStorage({ settings: { saveHistory: true } });
+  globalThis.chrome.storage.local.getBytesInUse = async () => 2_000_000;
+
+  for (let i = 0; i < 5; i++) {
+    await saveViewState(i, {
+      view: "summaryView",
+      url: `https://example.com/p/${i}`,
+    });
+  }
+
+  assert.ok(data.viewStateOrder.length < 5);
+  assert.strictEqual(await loadViewState(0), null);
+  assert.notStrictEqual(await loadViewState(4), null);
+});
+
+test("clearAllViewStates reads indexes only, never a full-store scan (#312)", async () => {
+  installFakeStorage({ settings: { saveHistory: true } });
+  await saveViewState(7, { ...CONTENT, url: "https://example.com/a" });
+
+  let scanned = false;
+  const realGet = globalThis.chrome.storage.local.get;
+  globalThis.chrome.storage.local.get = async (keys) => {
+    if (keys == null) scanned = true;
+    return realGet(keys);
+  };
+  try {
+    assert.strictEqual(await clearAllViewStates(), 2);
+  } finally {
+    globalThis.chrome.storage.local.get = realGet;
+  }
+
+  assert.strictEqual(scanned, false);
+});

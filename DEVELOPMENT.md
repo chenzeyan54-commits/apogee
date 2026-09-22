@@ -102,7 +102,7 @@ The `lib/` folder holds plain JavaScript logic split into clean functional folde
 
 #### `lib/storage/` (Extension Local Storage Managers)
 
-- **What it holds**: `pageCache.js` (summary caching, SHA-256 URL key hashing, and sensitive site exclusions). `settings.js` (user pref storage and defaults).
+- **What it holds**: `pageCache.js` (summary cache, SHA-256 page-address keys, sensitive-site exclusions, byte-budget eviction, atomic delete helper). `viewState.js` (per-tab popup state, byte-budget eviction). `activityAudit.js` (privacy audit log, order-index storage counts). `settings.js` (user preference storage and defaults).
 
 - **How to contribute**: Add user prefs or improve sensitive host exclusion patterns to guard user privacy.
 

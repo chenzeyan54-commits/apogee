@@ -1,9 +1,5 @@
 {
   "appName": { "message": "Apogee", "description": "Extension name" },
-  "appDescription": {
-    "message": "AI browser assistant for articles, videos, emails and more. Runs in-browser via WebGPU, WebAssembly, and Ollama.",
-    "description": "Extension description shown in the web store"
-  },
   "appHtmlLang": {
     "message": "en",
     "description": "HTML lang attribute for the popup document"
@@ -337,19 +333,9 @@
     "message": "Page Access History:",
     "description": "Audit access label"
   },
-  "pagesProcessed": {
-    "message": "$COUNT$ pages processed",
-    "description": "Audit access count",
-    "placeholders": { "count": { "content": "$1", "example": "3" } }
-  },
   "storageRetention": {
     "message": "Storage Retention:",
     "description": "Audit storage label"
-  },
-  "cachedItems": {
-    "message": "Cached items: $COUNT$",
-    "description": "Audit storage count",
-    "placeholders": { "count": { "content": "$1", "example": "3" } }
   },
   "recentAccessLog": {
     "message": "Recent Page Access Log",
@@ -416,21 +402,5 @@
   "summarizeVerb": {
     "message": "Summarize",
     "description": "Paste dialog submit"
-  },
-  "errorCouldNotReadPage": {
-    "message": "Couldn't read this page. Try reloading it, or pick a different tab.",
-    "description": "Generic extract failure"
-  },
-  "errorNothingToSummarize": {
-    "message": "Nothing to summarize here yet - open a page, email, or video first.",
-    "description": "Empty content error"
-  },
-  "errorPdfNoText": {
-    "message": "Couldn't pull any text out of this PDF - it might be a scanned image.",
-    "description": "PDF empty error"
-  },
-  "errorUnexpected": {
-    "message": "An unexpected error occurred. Try summarizing again.",
-    "description": "Generic fallback error"
   }
 }

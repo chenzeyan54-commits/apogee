@@ -128,7 +128,13 @@ test("getActivityAuditSummary counts real cached-page keys (#208)", async () => 
     "summary:bullets:auto:m:abc": "text",
     "suggested-prompts:bullets:auto:m:abc": ["q?"],
     "content:def": { title: "t" },
-    cacheOrder: [{ s: "summary:bullets:auto:m:abc" }],
+    cacheOrder: [
+      {
+        s: "summary:bullets:auto:m:abc",
+        p: "suggested-prompts:bullets:auto:m:abc",
+      },
+    ],
+    contentCacheOrder: ["content:def"],
     unrelated: 1,
   });
 

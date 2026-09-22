@@ -11,6 +11,7 @@ import {
   persistSummaryIfAllowed,
   persistContent,
   clearCachedPages,
+  removeCachedSummary,
   isSensitiveUrl,
   isSensitiveTitle,
   sanitizeTitleForStorage,
@@ -18,7 +19,11 @@ import {
   parsePrivateHosts,
   matchesPrivateHost,
   shouldPersist,
+  estimateByteSize,
+  StorageQuotaError,
   MAX_CACHED_PAGES,
+  MAX_CACHE_BYTES,
+  MAX_ENTRY_BYTES,
 } from "../../lib/storage/pageCache.js";
 
 function installFakeStorage(initial = {}) {
@@ -629,4 +634,161 @@ test("isSensitiveTitle detects sensitive page title patterns and excludes them f
     {},
   );
   assert.strictEqual(data.cacheOrder[1].t, "Public Research Article");
+});
+
+test("persistSummary evicts by bytes when a few large entries exceed the budget (#312)", async () => {
+  const data = installFakeStorage();
+  const big = "x".repeat(1_500_000); // ~1.5 MB each
+
+  for (let i = 0; i < 4; i++) {
+    await persistSummary(
+      `big-key-${i}`,
+      `big-prompts-${i}`,
+      `${big}${i}`,
+      `Title ${i}`,
+      null,
+      {
+        embedTextsFn: null,
+      },
+    );
+  }
+
+  // 4 x ~1.5 MB clears the 4 MB budget with the count cap untouched.
+  assert.ok(data.cacheOrder.length < 4);
+  let total = 0;
+  for (const e of data.cacheOrder) total += e.b;
+  assert.ok(total <= MAX_CACHE_BYTES);
+  assert.strictEqual(data["big-key-0"], undefined);
+  assert.strictEqual(data["big-prompts-0"], undefined);
+});
+
+test("persistSummary rejects an entry over the per-entry byte cap with a user-visible error (#312)", async () => {
+  installFakeStorage();
+  const huge = "x".repeat(MAX_ENTRY_BYTES + 1);
+
+  await assert.rejects(
+    persistSummary("huge-key", "huge-prompts", huge, "Title", null, {
+      embedTextsFn: null,
+    }),
+    (err) => err instanceof StorageQuotaError && /too large/.test(err.message),
+  );
+});
+
+test("persistSummary maps a quota throw to a user-visible StorageQuotaError (#312)", async () => {
+  installFakeStorage();
+  const realSet = globalThis.chrome.storage.local.set;
+  globalThis.chrome.storage.local.set = async () => {
+    throw new Error("Quota exceeded");
+  };
+  try {
+    await assert.rejects(
+      persistSummary("k", "p", "text", "Title", null, {
+        embedTextsFn: null,
+      }),
+      (err) =>
+        err instanceof StorageQuotaError && /not saved/.test(err.message),
+    );
+  } finally {
+    globalThis.chrome.storage.local.set = realSet;
+  }
+});
+
+test("persistSummary measures legacy entries without sizes natively when available (#312)", async () => {
+  const data = installFakeStorage({
+    "legacy-key": "x".repeat(4_200_000),
+    cacheOrder: [{ s: "legacy-key", p: null, t: "Legacy" }],
+  });
+  globalThis.chrome.storage.local.getBytesInUse = async (keys) => {
+    const list = Array.isArray(keys) ? keys : [keys];
+    return list.reduce(
+      (n, k) => n + (typeof data[k] === "string" ? data[k].length : 0),
+      0,
+    );
+  };
+
+  await persistSummary("new-key", "new-prompts", "small", "New", null, {
+    embedTextsFn: null,
+  });
+
+  // 4.2 MB legacy + small clears the budget with only 2 entries stored.
+  assert.ok(!data.cacheOrder.some((e) => e.s === "legacy-key"));
+  assert.strictEqual(data["legacy-key"], undefined);
+  assert.strictEqual(data["new-key"], "small");
+});
+
+test("removeCachedSummary deletes keys and the index entry together (#313)", async () => {
+  const data = installFakeStorage();
+  await persistSummary("k1", "p1", "first", "One", null, {
+    embedTextsFn: null,
+  });
+  await persistSummary("k2", "p2", "second", "Two", null, {
+    embedTextsFn: null,
+  });
+
+  assert.strictEqual(await removeCachedSummary("k1"), true);
+  assert.strictEqual(data.k1, undefined);
+  assert.strictEqual(data.p1, undefined);
+  assert.ok(!data.cacheOrder.some((e) => e.s === "k1"));
+  assert.strictEqual(data.k2, "second");
+  assert.strictEqual(await removeCachedSummary("missing"), false);
+});
+
+test("a delete racing a write leaves the index consistent (#313)", async () => {
+  const data = installFakeStorage();
+  await persistSummary("old", "old-p", "old text", "Old", null, {
+    embedTextsFn: null,
+  });
+
+  await Promise.all([
+    persistSummary("fresh", "fresh-p", "fresh text", "Fresh", null, {
+      embedTextsFn: null,
+    }),
+    removeCachedSummary("old"),
+  ]);
+
+  for (const e of data.cacheOrder) {
+    assert.ok(data[e.s] !== undefined, `index entry ${e.s} has its value`);
+  }
+  assert.ok(!data.cacheOrder.some((e) => e.s === "old"));
+  assert.strictEqual(data.old, undefined);
+});
+
+test("clearCachedPages removes only indexed keys without a full-store scan (#312)", async () => {
+  const data = installFakeStorage({ settings: { saveHistory: true } });
+  await persistSummary(
+    "summary:k",
+    "suggested-prompts:k",
+    "Body",
+    "Title",
+    null,
+    {
+      embedTextsFn: null,
+    },
+  );
+  await persistContent("https://example.com/a", {
+    title: "A",
+    content: "text",
+    type: "article",
+  });
+
+  let scanned = false;
+  const realGet = globalThis.chrome.storage.local.get;
+  globalThis.chrome.storage.local.get = async (keys) => {
+    if (keys == null) scanned = true;
+    return realGet(keys);
+  };
+  try {
+    assert.ok((await clearCachedPages()) > 0);
+  } finally {
+    globalThis.chrome.storage.local.get = realGet;
+  }
+
+  assert.strictEqual(scanned, false);
+  assert.deepStrictEqual(data.settings, { saveHistory: true });
+});
+
+test("estimateByteSize counts UTF-8 bytes, not characters", () => {
+  assert.strictEqual(estimateByteSize("abc"), 3);
+  assert.strictEqual(estimateByteSize("ä"), 2);
+  assert.ok(estimateByteSize({ a: "x".repeat(100) }) > 100);
 });

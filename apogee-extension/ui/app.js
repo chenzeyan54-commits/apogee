@@ -56,7 +56,6 @@ import {
   saveViewStateIfJobMatches,
   loadViewState,
   clearAllViewStates,
-  isViewStateKey,
 } from "../lib/storage/viewState.js";
 import {
   hashUrl,
@@ -67,7 +66,7 @@ import {
   getCachedContent,
   shouldPersist,
   clearCachedPages,
-  isCachedPageKey,
+  removeCachedSummary,
   CACHEABLE_PAGE_TYPES,
 } from "../lib/storage/pageCache.js";
 import { searchPastSummaries } from "../lib/retrieval/pastSummariesSearch.js";
@@ -1073,6 +1072,143 @@ function pastSummaryToExportItem(entry, text, stored = {}) {
   };
 }
 
+// One past-summary card for the history list. Shared by the recent-8 list
+// and full-index search results so both stay in sync.
+function buildPastSummaryCard(entry, text) {
+  const card = document.createElement("div");
+  card.className = "past-summary-card";
+  card.setAttribute("role", "button");
+  card.setAttribute("tabindex", "0");
+  card.dataset.title = (entry.t || "").toLowerCase();
+  card.dataset.cacheKey = entry.s;
+  card.setAttribute("aria-expanded", "false");
+
+  const textWrap = document.createElement("div");
+  textWrap.className = "past-summary-text";
+
+  if (entry.t) {
+    const titleEl = document.createElement("div");
+    titleEl.className = "past-summary-title";
+    titleEl.textContent = entry.t;
+    textWrap.appendChild(titleEl);
+  }
+
+  const preview = document.createElement("div");
+  preview.className = "past-summary-preview";
+  preview.textContent = firstLineOf(text);
+  textWrap.appendChild(preview);
+  card.appendChild(textWrap);
+
+  const toggleExpanded = () => {
+    const expanded = card.classList.toggle("expanded");
+    card.setAttribute("aria-expanded", String(expanded));
+    if (expanded) setMarkdownHtml(preview, text, { stored: true });
+    else preview.textContent = firstLineOf(text);
+  };
+  card.addEventListener("click", (e) => {
+    if (e.target.closest("a, button")) return;
+    toggleExpanded();
+  });
+  card.addEventListener("keydown", (e) => {
+    if (e.target.closest("button")) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleExpanded();
+    }
+  });
+
+  const copyMdBtn = document.createElement("button");
+  copyMdBtn.type = "button";
+  copyMdBtn.className = "copy-btn";
+  copyMdBtn.setAttribute("aria-label", "Copy as Markdown");
+  copyMdBtn.title = "Copy as Markdown";
+  copyMdBtn.innerHTML = icon("filetext");
+  copyMdBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyToClipboard(
+      formatSummaryAsMarkdown({
+        title: entry.t || "",
+        url: "",
+        summary: text,
+      }),
+      copyMdBtn,
+    );
+  });
+
+  const copyJsonBtn = document.createElement("button");
+  copyJsonBtn.type = "button";
+  copyJsonBtn.className = "copy-btn";
+  copyJsonBtn.setAttribute("aria-label", "Copy as JSON");
+  copyJsonBtn.title = "Copy as JSON";
+  copyJsonBtn.innerHTML = icon("download");
+  copyJsonBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      const stored = entry.p ? await chrome.storage.local.get(entry.p) : {};
+      copyToClipboard(
+        formatSummaryAsJSON(pastSummaryToExportItem(entry, text, stored)),
+        copyJsonBtn,
+      );
+    } catch (err) {
+      console.error("Copy past summary as JSON error:", err);
+    }
+  });
+
+  // The actions bar lives outside the collapsible preview, so this one
+  // delete button serves both the collapsed (off) and expanded (open)
+  // card states: inline in the row when collapsed, pinned top-right via
+  // CSS when the card is expanded. Clicking anywhere else on the card
+  // toggles it open (see the card click/keydown handlers above).
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "delete-btn";
+  deleteBtn.setAttribute("aria-label", "Delete this summary");
+  deleteBtn.title = "Delete this summary";
+  deleteBtn.innerHTML = icon("trash");
+  deleteBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      // One read-modify-write inside the storage module: a summary saved
+      // between the key delete and the index update can no longer resurrect
+      // the entry or orphan the keys.
+      await removeCachedSummary(entry.s);
+      await loadPastSummaries();
+    } catch (err) {
+      console.error("Delete past summary error:", err);
+    }
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "past-summary-actions";
+  actions.append(copyMdBtn, copyJsonBtn, deleteBtn);
+  card.appendChild(actions);
+  return card;
+}
+
+// Fetch stored texts for index entries. One targeted read, bounded by the cache cap.
+async function fetchPastSummaryTexts(entries) {
+  const keys = entries.map((e) => e?.s).filter(Boolean);
+  return keys.length > 0 ? await chrome.storage.local.get(keys) : {};
+}
+
+// Render one card per entry that still has stored text.
+function renderPastSummaryCards(entries, stored) {
+  pastSummariesList.innerHTML = "";
+  for (const entry of entries) {
+    const text = stored[entry.s];
+    if (!text) continue;
+    pastSummariesList.appendChild(buildPastSummaryCard(entry, text));
+  }
+}
+
+function showPastSummariesEmpty() {
+  pastSummariesList.querySelector(".past-summaries-empty")?.remove();
+  const msg = document.createElement("div");
+  msg.className = "past-summaries-empty";
+  msg.textContent = "No matching summaries.";
+  pastSummariesList.appendChild(msg);
+}
+
 async function loadPastSummaries() {
   const { cacheOrder = [] } = await chrome.storage.local.get("cacheOrder");
   if (cacheOrder.length === 0) {
@@ -1082,129 +1218,8 @@ async function loadPastSummaries() {
   }
 
   const recent = cacheOrder.slice(-PAST_SUMMARIES_SHOWN).reverse();
-  const stored = await chrome.storage.local.get(recent.map((e) => e.s));
-
-  pastSummariesList.innerHTML = "";
-  for (const entry of recent) {
-    const text = stored[entry.s];
-    if (!text) continue;
-
-    const card = document.createElement("div");
-    card.className = "past-summary-card";
-    card.setAttribute("role", "button");
-    card.setAttribute("tabindex", "0");
-    card.dataset.title = (entry.t || "").toLowerCase();
-    card.dataset.cacheKey = entry.s;
-    card.setAttribute("aria-expanded", "false");
-
-    const textWrap = document.createElement("div");
-    textWrap.className = "past-summary-text";
-
-    if (entry.t) {
-      const titleEl = document.createElement("div");
-      titleEl.className = "past-summary-title";
-      titleEl.textContent = entry.t;
-      textWrap.appendChild(titleEl);
-    }
-
-    const preview = document.createElement("div");
-    preview.className = "past-summary-preview";
-    preview.textContent = firstLineOf(text);
-    textWrap.appendChild(preview);
-    card.appendChild(textWrap);
-
-    const toggleExpanded = () => {
-      const expanded = card.classList.toggle("expanded");
-      card.setAttribute("aria-expanded", String(expanded));
-      if (expanded) setMarkdownHtml(preview, text, { stored: true });
-      else preview.textContent = firstLineOf(text);
-    };
-    card.addEventListener("click", (e) => {
-      if (e.target.closest("a, button")) return;
-      toggleExpanded();
-    });
-    card.addEventListener("keydown", (e) => {
-      if (e.target.closest("button")) return;
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleExpanded();
-      }
-    });
-
-    const copyMdBtn = document.createElement("button");
-    copyMdBtn.type = "button";
-    copyMdBtn.className = "copy-btn";
-    copyMdBtn.setAttribute("aria-label", "Copy as Markdown");
-    copyMdBtn.title = "Copy as Markdown";
-    copyMdBtn.innerHTML = icon("filetext");
-    copyMdBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      copyToClipboard(
-        formatSummaryAsMarkdown({
-          title: entry.t || "",
-          url: "",
-          summary: text,
-        }),
-        copyMdBtn,
-      );
-    });
-
-    const copyJsonBtn = document.createElement("button");
-    copyJsonBtn.type = "button";
-    copyJsonBtn.className = "copy-btn";
-    copyJsonBtn.setAttribute("aria-label", "Copy as JSON");
-    copyJsonBtn.title = "Copy as JSON";
-    copyJsonBtn.innerHTML = icon("download");
-    copyJsonBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        const stored = entry.p ? await chrome.storage.local.get(entry.p) : {};
-        copyToClipboard(
-          formatSummaryAsJSON(pastSummaryToExportItem(entry, text, stored)),
-          copyJsonBtn,
-        );
-      } catch (err) {
-        console.error("Copy past summary as JSON error:", err);
-      }
-    });
-
-    // The actions bar lives outside the collapsible preview, so this one
-    // delete button serves both the collapsed (off) and expanded (open)
-    // card states: inline in the row when collapsed, pinned top-right via
-    // CSS when the card is expanded. Clicking anywhere else on the card
-    // toggles it open (see the card click/keydown handlers above).
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "delete-btn";
-    deleteBtn.setAttribute("aria-label", "Delete this summary");
-    deleteBtn.title = "Delete this summary";
-    deleteBtn.innerHTML = icon("trash");
-    deleteBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        const removeKeys = [entry.s, entry.p].filter(Boolean);
-        if (removeKeys.length > 0) {
-          await chrome.storage.local.remove(removeKeys);
-        }
-        const { cacheOrder = [] } =
-          await chrome.storage.local.get("cacheOrder");
-        const updatedOrder = cacheOrder.filter(
-          (item) => item && item.s !== entry.s,
-        );
-        await chrome.storage.local.set({ cacheOrder: updatedOrder });
-        await loadPastSummaries();
-      } catch (err) {
-        console.error("Delete past summary error:", err);
-      }
-    });
-
-    const actions = document.createElement("div");
-    actions.className = "past-summary-actions";
-    actions.append(copyMdBtn, copyJsonBtn, deleteBtn);
-    card.appendChild(actions);
-
-    pastSummariesList.appendChild(card);
-  }
+  const stored = await fetchPastSummaryTexts(recent);
+  renderPastSummaryCards(recent, stored);
 
   const hasCards = pastSummariesList.children.length > 0;
   pastSummariesSection.classList.toggle("hidden", !hasCards);
@@ -1217,49 +1232,24 @@ async function loadPastSummaries() {
 
 async function filterPastSummaries(query) {
   const q = (query || "").trim();
+  // An empty query restores the recent-8 display list.
+  if (!q) {
+    await loadPastSummaries();
+    return;
+  }
+  // Search the full index, not just the displayed recent 8, so older saved
+  // summaries stay findable. Bounded by the cache cap (50 entries).
   const { cacheOrder = [] } = await chrome.storage.local.get("cacheOrder");
-  const recent = cacheOrder.slice(-PAST_SUMMARIES_SHOWN).reverse();
-  const stored = await chrome.storage.local.get(recent.map((e) => e.s));
+  const stored = await fetchPastSummaryTexts(cacheOrder);
 
   const searchResults = await searchPastSummaries({
     query: q,
-    cacheOrder: recent,
+    cacheOrder,
     storedSummaries: stored,
   });
 
-  const matchingKeys = new Set(searchResults.map((e) => e.s));
-
-  const cards = pastSummariesList.querySelectorAll(".past-summary-card");
-  let visibleCount = 0;
-  cards.forEach((card) => {
-    const key = card.dataset.cacheKey;
-    const match = !q || matchingKeys.has(key);
-    card.classList.toggle("hidden", !match);
-    if (match) visibleCount++;
-  });
-
-  if (q && searchResults.length > 0) {
-    const cardMap = new Map();
-    cards.forEach((card) => {
-      if (card.dataset.cacheKey) cardMap.set(card.dataset.cacheKey, card);
-    });
-    searchResults.forEach((item) => {
-      const card = cardMap.get(item.s);
-      if (card) pastSummariesList.appendChild(card);
-    });
-  }
-
-  const existing = pastSummariesList.querySelector(".past-summaries-empty");
-  if (visibleCount === 0 && q && cards.length > 0) {
-    if (!existing) {
-      const msg = document.createElement("div");
-      msg.className = "past-summaries-empty";
-      msg.textContent = "No matching summaries.";
-      pastSummariesList.appendChild(msg);
-    }
-  } else if (existing) {
-    existing.remove();
-  }
+  renderPastSummaryCards(searchResults, stored);
+  if (pastSummariesList.children.length === 0) showPastSummariesEmpty();
 }
 
 if (pastSummariesFilter) {
@@ -2982,11 +2972,18 @@ async function clearCachedData() {
 
 /** What is on disk right now, for telling the user what a wipe would cost. */
 async function storedHistoryStats() {
-  const all = await chrome.storage.local.get(null);
-  return {
-    any: Object.keys(all).some((k) => isCachedPageKey(k) || isViewStateKey(k)),
-    summaries: (all.cacheOrder || []).length,
-  };
+  // Index reads only — never a full-store `get(null)` scan.
+  const stored = await chrome.storage.local.get([
+    "cacheOrder",
+    "contentCacheOrder",
+    "viewStateOrder",
+  ]);
+  const summaries = stored.cacheOrder || [];
+  const hasPages =
+    summaries.length > 0 ||
+    (stored.contentCacheOrder || []).length > 0 ||
+    (stored.viewStateOrder || []).length > 0;
+  return { any: hasPages, summaries: summaries.length };
 }
 
 clearDataBtn?.addEventListener("click", async () => {
