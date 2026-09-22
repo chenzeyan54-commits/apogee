@@ -1,6 +1,6 @@
 # Chrome Web Store listing
 
-Version-controlled copy of the Apogee CWS submission fields. Update with each store submission. Version at last edit: 0.2.1.
+Version-controlled copy of the Apogee CWS submission fields. Update with each store submission. Version at last edit: 0.2.2.
 
 Packaging: upload a ZIP of the Chromium build (`dist/chrome`), not a CRX. The store repacks and signs it. `npm run package` makes the release ZIP.
 
