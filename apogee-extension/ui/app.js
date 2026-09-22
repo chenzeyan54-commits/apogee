@@ -256,7 +256,6 @@ const pastSummariesSection = document.getElementById("pastSummariesSection");
 const pastSummariesList = document.getElementById("pastSummariesList");
 const pastSummariesFilter = document.getElementById("pastSummariesFilter");
 const exportAllJsonBtn = document.getElementById("exportAllJsonBtn");
-const wordmarkEmpty = document.getElementById("wordmarkEmpty");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsBtn2 = document.getElementById("settingsBtn2");
 const openSidePanelBtns = document.querySelectorAll(".open-side-panel-btn");
@@ -1079,7 +1078,6 @@ async function loadPastSummaries() {
   if (cacheOrder.length === 0) {
     pastSummariesSection.classList.add("hidden");
     pastSummariesList.innerHTML = "";
-    wordmarkEmpty?.classList.remove("hidden");
     return;
   }
 
@@ -1210,7 +1208,6 @@ async function loadPastSummaries() {
 
   const hasCards = pastSummariesList.children.length > 0;
   pastSummariesSection.classList.toggle("hidden", !hasCards);
-  wordmarkEmpty?.classList.toggle("hidden", hasCards);
 
   if (pastSummariesFilter) {
     pastSummariesFilter.value = "";
