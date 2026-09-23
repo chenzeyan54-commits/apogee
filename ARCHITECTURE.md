@@ -145,6 +145,10 @@ sequenceDiagram
     SW->>DB: Persist summary and generate suggested follow-up questions
 ```
 
+### Stream retention
+
+Streams buffer tokens, so a reopened popup replays the text instead of restarting the job. Each stream lives for 2 minutes after its last token. Every new token extends that window, so a long summary never expires while it still makes progress. The worker reclaims a stream with no progress for 2 minutes. A popup that arrives after reclaim shows the expired-stream message and asks you to summarize again.
+
 ## Retrieval and Question Answering Flow
 
 The Ask feature lets you query long documents, PDFs, and video transcripts without losing context through heavy truncation.

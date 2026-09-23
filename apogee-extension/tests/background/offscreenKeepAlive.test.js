@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert";
-import fs from "node:fs";
+import { readSource } from "../helpers/readSource.js";
 import { createExtensionApiMock } from "../helpers/extensionApiMock.js";
 
 // --- Offscreen relay keep-alive ---
@@ -88,9 +88,9 @@ test("track/untrack ignore empty stream ids", () => {
 });
 
 test("relay and finish paths wire tracking end to end", () => {
-  const swCode = fs.readFileSync(
-    new URL("../../background/service-worker.js", import.meta.url),
-    "utf-8",
+  const swCode = readSource(
+    "../../background/service-worker.js",
+    import.meta.url,
   );
   const relayStart = swCode.indexOf("function relayToOffscreenStream");
   assert.ok(relayStart !== -1, "relay helper exists");
