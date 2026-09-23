@@ -5,18 +5,14 @@ import {
   streamInTargetLanguage,
   generateInTargetLanguage,
 } from "../lib/language/languageOutput.js";
-import { makeOpusTranslateFn } from "../lib/language/opusTranslateEngine.js";
+import { opusTranslateFnFor } from "../lib/language/opusTranslateEngine.js";
 import {
   retrieveRelevantContent,
   findBestPassage,
   selectSalientChunks,
 } from "../lib/retrieval/rag.js";
 import { createLock } from "../lib/util/mutex.js";
-import {
-  WEBLLM_MODELS,
-  TRANSLATION_ENGINES,
-  isKnownWebLLMModelId,
-} from "../lib/constants.js";
+import { WEBLLM_MODELS, isKnownWebLLMModelId } from "../lib/constants.js";
 import {
   withTransformersEngine,
   transformersChatStream,
@@ -31,6 +27,11 @@ import {
   replayStreamToPort,
   warmedStatsForState,
 } from "../lib/util/streamState.js";
+import {
+  createSlidingExpiry,
+  STREAM_CLEANUP_MS,
+} from "../lib/util/streamExpiry.js";
+import { createSummarizeProgressTracker } from "../lib/summarize/progress.js";
 
 initDebugLogging();
 
@@ -393,9 +394,8 @@ function reportProgress(text, progress = 0) {
     .catch(() => {});
 }
 
-function opusTranslateFor(translationEngine) {
-  if (translationEngine !== TRANSLATION_ENGINES.OPUS) return undefined;
-  return makeOpusTranslateFn((p) => reportProgress(p.text, p.progress ?? 0));
+function opusProgressForReport(p) {
+  reportProgress(p.text, p.progress ?? 0);
 }
 
 async function runSummarize(eng, pending, emit, signal) {
@@ -439,7 +439,10 @@ async function runSummarize(eng, pending, emit, signal) {
     {
       chatStreamFn: webllmChatStream,
       onProgress,
-      translateFn: opusTranslateFor(pending.translationEngine),
+      translateFn: opusTranslateFnFor(
+        pending.translationEngine,
+        opusProgressForReport,
+      ),
       selectChunksFn: (chunks, k) => selectSalientChunks(chunks, k),
     },
   )) {
@@ -450,18 +453,25 @@ async function runSummarize(eng, pending, emit, signal) {
 
 const streams = new Map();
 
-const STREAM_CLEANUP_MS = 2 * 60 * 1000;
-function scheduleStreamCleanup(streamId) {
-  setTimeout(() => {
+// Sliding expiry: every chunk of progress reschedules (slides) the timer,
+// so a long map-reduce job that keeps emitting tokens never expires
+// mid-generation; a stream with no progress for the full window is still
+// reclaimed.
+const streamExpiry = createSlidingExpiry({
+  timeoutMs: STREAM_CLEANUP_MS,
+  onExpire: (streamId) => {
     const stream = streams.get(streamId);
     if (!stream) return;
     streams.delete(streamId);
-    for (const port of stream.subscribers) {
+    for (const port of [...stream.subscribers]) {
       try {
         port.disconnect();
       } catch {}
     }
-  }, STREAM_CLEANUP_MS);
+  },
+});
+function scheduleStreamCleanup(streamId) {
+  streamExpiry.schedule(streamId);
 }
 
 async function runTransformersJob(
@@ -482,8 +492,9 @@ async function runTransformersJob(
       .catch(() => {});
   };
 
-  let longNote = "";
-  let stageLabel = "Summarizing...";
+  const tracker = createSummarizeProgressTracker((text) =>
+    reportProgress(text),
+  );
 
   const customInstructions = pending.customInstructions;
 
@@ -511,7 +522,10 @@ async function runTransformersJob(
             signal,
           },
           {
-            translateFn: opusTranslateFor(pending.translationEngine),
+            translateFn: opusTranslateFnFor(
+              pending.translationEngine,
+              opusProgressForReport,
+            ),
             selectChunksFn: (chunks, k) => selectSalientChunks(chunks, k),
             chatStreamFn: async function* (_host, _model, prompt, opts) {
               let count = 0;
@@ -520,24 +534,11 @@ async function runTransformersJob(
               })) {
                 if (signal?.aborted) return;
                 count++;
-                if (count % 24 === 0) {
-                  reportProgress(`${longNote}${stageLabel} (${count} words)`);
-                }
+                tracker.trackWord(count);
                 yield token;
               }
             },
-            onProgress: (p) => {
-              if (p.stage === "truncated") {
-                longNote = "Long page - summarizing the key parts. ";
-                reportProgress(longNote.trim());
-                return;
-              }
-              if (p.stage === "reduce") stageLabel = "Merging summary...";
-              else if (p.stage === "translate") stageLabel = "Translating...";
-              else
-                stageLabel = `Summarizing part ${p.index + 1} of ${p.total}...`;
-              reportProgress(longNote + stageLabel);
-            },
+            onProgress: tracker.onProgress,
           },
         );
         for await (const token of generator) {
@@ -549,7 +550,13 @@ async function runTransformersJob(
           transformersChatFn(eng),
           askPrompt,
           askLanguage,
-          { signal, translateFn: opusTranslateFor(pending.translationEngine) },
+          {
+            signal,
+            translateFn: opusTranslateFnFor(
+              pending.translationEngine,
+              opusProgressForReport,
+            ),
+          },
         )) {
           if (signal?.aborted) break;
           emit({ type: "chunk", text: token });
@@ -571,6 +578,8 @@ async function runStream(streamId, pending, stream) {
     if (stream.cancelled) return;
     if (msg.type === "chunk") {
       if (!appendChunkToState(stream, msg.text || "")) return;
+      // Heartbeat: progress slides the expiry window so long jobs survive.
+      scheduleStreamCleanup(streamId);
     }
     if (msg.type === "done") {
       msg = finishStateWithStats(stream, msg);
@@ -653,7 +662,10 @@ async function runStream(streamId, pending, stream) {
                 emit,
                 controller.signal,
                 askLanguage,
-                opusTranslateFor(pending.translationEngine),
+                opusTranslateFnFor(
+                  pending.translationEngine,
+                  opusProgressForReport,
+                ),
               );
               break;
 
@@ -753,6 +765,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const streamId = message.streamId;
           const stream = createStreamState();
           streams.set(streamId, stream);
+          scheduleStreamCleanup(streamId);
           sendResponse({ streamId });
           runStream(
             streamId,
@@ -769,6 +782,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             stream.done = true;
             stream.text = "";
             broadcastToStream(stream, { type: "cancelled" });
+            scheduleStreamCleanup(message.payload.streamId);
             try {
               stream.controller?.abort();
             } catch {}
@@ -823,7 +837,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             summary,
           );
           const qLanguage = await resolveEffectiveLanguage(summary, language);
-          const translateFn = opusTranslateFor(translationEngine);
+          const translateFn = opusTranslateFnFor(
+            translationEngine,
+            opusProgressForReport,
+          );
           const questions = await withProviderEngine(
             provider,
             model,
@@ -860,7 +877,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
           }
           const qLanguage = await resolveEffectiveLanguage("", language);
-          const translateFn = opusTranslateFor(translationEngine);
+          const translateFn = opusTranslateFnFor(
+            translationEngine,
+            opusProgressForReport,
+          );
           const text = await withProviderEngine(
             provider,
             model,

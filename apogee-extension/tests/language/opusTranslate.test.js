@@ -6,6 +6,8 @@ import {
   splitTranslatablePrefix,
   translatePreservingStructure,
 } from "../../lib/language/opusTranslate.js";
+import { opusTranslateFnFor } from "../../lib/language/opusTranslateEngine.js";
+import { TRANSLATION_ENGINES } from "../../lib/constants.js";
 
 test("resolveOpusModel picks direct en->X pairs where they exist", () => {
   assert.deepStrictEqual(resolveOpusModel("en", "es"), {
@@ -130,4 +132,20 @@ test("translatePreservingStructure batches lines and reports progress per batch"
     [4, 5],
     [5, 5],
   ]);
+});
+
+test("opusTranslateFnFor returns undefined for non-OPUS engines", () => {
+  assert.strictEqual(opusTranslateFnFor(TRANSLATION_ENGINES.LLM), undefined);
+  assert.strictEqual(opusTranslateFnFor(undefined), undefined);
+  assert.strictEqual(opusTranslateFnFor("opus "), undefined);
+});
+
+test("opusTranslateFnFor builds a translator for the OPUS engine", () => {
+  const fn = opusTranslateFnFor(TRANSLATION_ENGINES.OPUS, () => {});
+  assert.strictEqual(typeof fn, "function");
+});
+
+test("opusTranslateFnFor runs silent without a progress callback", () => {
+  const fn = opusTranslateFnFor(TRANSLATION_ENGINES.OPUS);
+  assert.strictEqual(typeof fn, "function");
 });
