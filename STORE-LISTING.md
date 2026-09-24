@@ -52,6 +52,8 @@ WHAT IT DOES
 
 - Custom instructions hold your standing guidance ("Explain like I'm five", "Focus on the technical details"). They apply to each summary and answer.
 
+- Per-page focus keywords ("Focus on... (optional)", up to 200 characters) let you steer article, document, and pasted text summaries toward specific topics without adding ungrounded facts (hidden on video, discussion, and multi-tab pages).
+
 - Summaries come in your language. Pick one of 29 output languages (or keep the page own). The summarization model itself translates. Dedicated on-device translation models offer another option.
 
 Fast ways to summarize without opening the popup:

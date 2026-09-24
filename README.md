@@ -87,6 +87,8 @@ The table below compares Apogee with common cloud-based AI extensions and the di
 
 - **Custom Standing Instructions**: Set your own prompt guidance such as simple explanations or technical summaries.
 
+- **Per-Page Focus Keywords**: Enter an optional topic or keyword (up to 200 characters) in the **Focus on... (optional)** field (located below the response format selector in the home view) before summarizing articles, PDFs, DOCX files, or pasted text to steer emphasis toward specific themes without inventing facts. The input is hidden on video, discussion (Hacker News, Reddit, Stack Overflow), and multi-tab pages.
+
 - **Multi-Language Translation**: Summarize pages into 32 target languages with the default Helsinki-NLP Opus-MT engine or direct LLM translation.
 
 ## Screenshots
