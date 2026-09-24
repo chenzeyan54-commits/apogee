@@ -7,7 +7,7 @@ function setDebugLogging(on) {
 }
 
 export function debugLog(...args) {
-  if (enabled) console.log(...args);
+  if (enabled) console.log("[apogee]", ...args);
 }
 
 export async function initDebugLogging() {
