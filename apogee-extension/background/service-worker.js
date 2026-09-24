@@ -4,7 +4,7 @@ import {
   streamInTargetLanguage,
   generateInTargetLanguage,
 } from "../lib/language/languageOutput.js";
-import { makeOpusTranslateFn } from "../lib/language/opusTranslateEngine.js";
+import { opusTranslateFnFor } from "../lib/language/opusTranslateEngine.js";
 import { chatStream, checkHealth } from "../lib/engines/ollamaClient.js";
 import {
   chatStream as llamaChatStream,
@@ -37,6 +37,8 @@ import {
   withCustomInstructions,
 } from "../lib/summarize/prompts.js";
 import { truncateForPrompt } from "../lib/summarize/chunk.js";
+import { createSummarizeProgressTracker } from "../lib/summarize/progress.js";
+import { STREAM_CLEANUP_MS } from "../lib/util/streamExpiry.js";
 import { mapReduceStream } from "../lib/summarize/mapReduce.js";
 import { parseSuggestedQuestions } from "../lib/summarize/questions.js";
 import { extractPdfText } from "../lib/extract/pdfExtract.js";
@@ -86,11 +88,7 @@ import {
   getProviderType,
   getModelForSettings,
 } from "../lib/engines/providers.js";
-import {
-  PROVIDERS,
-  TRANSLATION_ENGINES,
-  DEFAULT_LLAMACPP_HOST,
-} from "../lib/constants.js";
+import { PROVIDERS, DEFAULT_LLAMACPP_HOST } from "../lib/constants.js";
 import {
   ALLOWED_OLLAMA_HOSTS,
   DEFAULT_OLLAMA_PORT,
@@ -387,6 +385,25 @@ function isOffscreenStream(streamId) {
   );
 }
 
+// Shared head for the ollama/llamacpp/transformers stream actions: rebuild
+// the finalize worker-side (so callers cannot forge cache keys), merge it
+// into the payload with any caller extras, and register the popup
+// view-state. The webllm summarize/ask case keeps its own gate on
+// message.action, so it stays out.
+async function prepareStreamPayload(streamId, rawPayload, extra = {}) {
+  const trustedFinalize =
+    rawPayload?.action === "summarize" || rawPayload?.finalize
+      ? await buildTrustedFinalize(rawPayload)
+      : null;
+  const payload = {
+    ...rawPayload,
+    ...(trustedFinalize ? { finalize: trustedFinalize } : {}),
+    ...extra,
+  };
+  await recordPopupSummaryStream(payload, streamId);
+  return payload;
+}
+
 const activeStreams = new Map();
 
 // WebLLM / Transformers jobs run in the offscreen document, so they have no
@@ -411,7 +428,13 @@ export function untrackOffscreenRelay(streamId) {
 }
 
 const STREAM_CLEANUP_PREFIX = "stream-cleanup:";
-const STREAM_CLEANUP_MINUTES = 2;
+// Single source of truth for the 2-min window lives in lib/util/streamExpiry.js
+// (the offscreen document consumes it as ms); alarms take minutes.
+const STREAM_CLEANUP_MINUTES = STREAM_CLEANUP_MS / (60 * 1000);
+// Sliding expiry: re-creating an alarm with the same name overwrites it, so
+// every call pushes expiry 2 min out. Callers refresh on each chunk of
+// progress (emitChunk, relayed offscreen chunks); a stream with no progress
+// for the full window is reclaimed by the alarm handler below.
 function scheduleStreamCleanup(streamId) {
   chrome.alarms.create(`${STREAM_CLEANUP_PREFIX}${streamId}`, {
     delayInMinutes: STREAM_CLEANUP_MINUTES,
@@ -458,6 +481,12 @@ function relayToOffscreenStream(popupPort, streamId) {
   let terminal = false;
 
   offscreenPort.onMessage.addListener((msg) => {
+    if (msg.type === "chunk") {
+      // Heartbeat for relayed jobs: the offscreen document owns the text,
+      // but the worker owns the registered-job/alarm entry, so progress seen
+      // here must slide the same 2-min window.
+      scheduleStreamCleanup(streamId);
+    }
     if (
       msg.type === "done" ||
       msg.type === "error" ||
@@ -621,6 +650,9 @@ function createBufferedStream(streamId, { finalize, model, title, url }) {
   const emitChunk = (text) => {
     if (!appendChunkToState(stream, text)) return;
     broadcastToStream(stream, { type: "chunk", text });
+    // Heartbeat: progress slides the 2-min alarm window so long map-reduce
+    // jobs never expire mid-generation; idle streams still get reclaimed.
+    scheduleStreamCleanup(streamId);
     const stats = warmedStatsForState(stream);
     if (stats) broadcastToStream(stream, stats);
   };
@@ -698,7 +730,6 @@ async function startLocalHttpStream(
     }
   }
 
-  let longNote = "";
   const reportProgress = (text) => {
     chrome.runtime
       .sendMessage({
@@ -708,11 +739,13 @@ async function startLocalHttpStream(
       })
       .catch(() => {});
   };
+  const tracker = createSummarizeProgressTracker((text) =>
+    reportProgress(text),
+  );
 
-  const translateFn =
-    translationEngine === TRANSLATION_ENGINES.OPUS
-      ? makeOpusTranslateFn((p) => reportProgress(p.text))
-      : undefined;
+  const translateFn = opusTranslateFnFor(translationEngine, (p) =>
+    reportProgress(p.text),
+  );
 
   try {
     let generator;
@@ -736,21 +769,7 @@ async function startLocalHttpStream(
           chatStreamFn,
           ...(chunkTextFn ? { chunkTextFn } : {}),
           translateFn,
-          onProgress: (p) => {
-            if (p.stage === "truncated") {
-              longNote = "Long page - summarizing the key parts. ";
-              reportProgress(longNote.trim());
-              return;
-            }
-            if (p.stage === "reduce")
-              reportProgress(`${longNote}Merging summary...`);
-            else if (p.stage === "translate")
-              reportProgress(`${longNote}Translating...`);
-            else
-              reportProgress(
-                `${longNote}Summarizing part ${p.index + 1} of ${p.total}...`,
-              );
-          },
+          onProgress: tracker.onProgress,
         },
       );
     } else if (action === "ask") {
@@ -814,15 +833,13 @@ async function startTransformersStream(
       .catch(() => {});
   };
 
-  const translateFn =
-    translationEngine === TRANSLATION_ENGINES.OPUS
-      ? makeOpusTranslateFn((p) =>
-          onProgress({ progress: p.progress ?? 0, text: p.text }),
-        )
-      : undefined;
+  const translateFn = opusTranslateFnFor(translationEngine, (p) =>
+    onProgress({ progress: p.progress ?? 0, text: p.text }),
+  );
 
-  let longNote = "";
-  let stageLabel = "Summarizing...";
+  const tracker = createSummarizeProgressTracker((text) =>
+    onProgress({ progress: 0, text }),
+  );
 
   const { customInstructions } = await getSettings();
 
@@ -859,27 +876,11 @@ async function startTransformersStream(
                 })) {
                   if (stream.cancelled) return;
                   count++;
-                  if (count % 24 === 0) {
-                    onProgress({
-                      progress: 0,
-                      text: `${longNote}${stageLabel} (${count} words)`,
-                    });
-                  }
+                  tracker.trackWord(count);
                   yield token;
                 }
               },
-              onProgress: (p) => {
-                if (p.stage === "truncated") {
-                  longNote = "Long page - summarizing the key parts. ";
-                  onProgress({ progress: 0, text: longNote.trim() });
-                  return;
-                }
-                if (p.stage === "reduce") stageLabel = "Merging summary...";
-                else if (p.stage === "translate") stageLabel = "Translating...";
-                else
-                  stageLabel = `Summarizing part ${p.index + 1} of ${p.total}...`;
-                onProgress({ progress: 0, text: longNote + stageLabel });
-              },
+              onProgress: tracker.onProgress,
             },
           );
           for await (const token of generator) {
@@ -934,10 +935,7 @@ async function generateQuestionsFromChat(
 ) {
   const prompt = buildSuggestQuestionsPrompt(title, url, summary);
   const qLanguage = await resolveEffectiveLanguage(summary, language);
-  const translateFn =
-    translationEngine === TRANSLATION_ENGINES.OPUS
-      ? makeOpusTranslateFn(() => {})
-      : undefined;
+  const translateFn = opusTranslateFnFor(translationEngine);
   const text = await generateInTargetLanguage(chat, prompt, qLanguage, {
     translateFn,
   });
@@ -1979,16 +1977,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "ollama-stream": {
           const streamId = nextStreamId("ollama");
           const settings = await getSettings();
-          const trustedFinalize =
-            message.payload?.action === "summarize" || message.payload?.finalize
-              ? await buildTrustedFinalize(message.payload)
-              : null;
-          const payload = {
-            ...message.payload,
-            ...(trustedFinalize ? { finalize: trustedFinalize } : {}),
-            host: settings.ollamaHost,
-          };
-          await recordPopupSummaryStream(payload, streamId);
+          const payload = await prepareStreamPayload(
+            streamId,
+            message.payload,
+            {
+              host: settings.ollamaHost,
+            },
+          );
           startLocalHttpStream(streamId, payload);
           sendResponse({ streamId });
           break;
@@ -1997,17 +1992,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "llamacpp-stream": {
           const streamId = nextStreamId("llamacpp");
           const settings = await getSettings();
-          const trustedFinalize =
-            message.payload?.action === "summarize" || message.payload?.finalize
-              ? await buildTrustedFinalize(message.payload)
-              : null;
-          const payload = {
-            ...message.payload,
-            ...(trustedFinalize ? { finalize: trustedFinalize } : {}),
-            host: settings.llamaHost,
-            apiKey: settings.llamaApiKey,
-          };
-          await recordPopupSummaryStream(payload, streamId);
+          const payload = await prepareStreamPayload(
+            streamId,
+            message.payload,
+            {
+              host: settings.llamaHost,
+              apiKey: settings.llamaApiKey,
+            },
+          );
           startLocalHttpStream(streamId, payload, LLAMACPP_PROVIDER);
           sendResponse({ streamId });
           break;
@@ -2076,15 +2068,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "transformers-stream": {
           const streamId = nextStreamId("transformers");
           const settings = await getSettings();
-          const trustedFinalize =
-            message.payload?.action === "summarize" || message.payload?.finalize
-              ? await buildTrustedFinalize(message.payload)
-              : null;
-          const payload = {
-            ...message.payload,
-            ...(trustedFinalize ? { finalize: trustedFinalize } : {}),
-          };
-          await recordPopupSummaryStream(payload, streamId);
+          const payload = await prepareStreamPayload(streamId, message.payload);
           if (hasOffscreenAPI) {
             await ensureOffscreenDocument();
             const { action, ...jobPayload } = payload;
@@ -2467,10 +2451,7 @@ export async function summarizeMultiTab(tabsToSummarize, opts = {}) {
     langSample,
     settings.summaryLanguage,
   );
-  const translateFn =
-    settings.translationEngine === TRANSLATION_ENGINES.OPUS
-      ? makeOpusTranslateFn(() => {})
-      : undefined;
+  const translateFn = opusTranslateFnFor(settings.translationEngine);
 
   // Combined document preserves tab attribution across chunk boundaries, so
   // the map-reduce path covers every tab instead of truncating to one prompt.

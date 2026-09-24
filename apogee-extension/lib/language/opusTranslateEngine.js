@@ -7,6 +7,7 @@ import {
   resolveOpusModel,
   translatePreservingStructure,
 } from "./opusTranslate.js";
+import { TRANSLATION_ENGINES } from "../constants.js";
 
 export function makeOpusTranslateFn(onProgress) {
   return async (text, targetLang) => {
@@ -32,4 +33,12 @@ export function makeOpusTranslateFn(onProgress) {
       return null;
     }
   };
+}
+
+// Shared OPUS gate used by the offscreen document and the service worker:
+// any other engine needs no translator, so callers get undefined. Without
+// an onProgress callback the translator runs silent.
+export function opusTranslateFnFor(translationEngine, onProgress) {
+  if (translationEngine !== TRANSLATION_ENGINES.OPUS) return undefined;
+  return makeOpusTranslateFn(onProgress ?? (() => {}));
 }

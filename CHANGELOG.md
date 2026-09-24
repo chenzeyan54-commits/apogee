@@ -235,6 +235,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Byte-aware storage eviction and atomic past-summary delete ([4a62ecc](https://github.com/darshi1337/apogee/commit/4a62ecc5321f1bba94f27e06fb852d10990a76ad))
+- Sliding stream expiry so long summaries survive cleanup ([c2ad363](https://github.com/darshi1337/apogee/commit/c2ad363c6a3be137c9e3dcd351d5448983a70df1))
 
 ## [0.2.1] - 2026-08-19
 
