@@ -29,8 +29,9 @@ export function createStreamState(extra = {}) {
 
 // Capped accumulation for one chunk (#269): keeps the head and drops the
 // tail so a runaway model cannot bloat worker memory. Counts only the
-// accepted prefix toward tokens. Returns false for empty/cancelled chunks,
-// in which case the caller broadcasts nothing.
+// accepted prefix toward tokens. Returns false for empty/cancelled chunks
+// and when the cap accepted zero new chars, in which case the caller
+// broadcasts nothing.
 export function appendChunkToState(state, text) {
   if (!text || state.cancelled) return false;
   const capped = appendStreamTextCapped(state.text, text);
@@ -40,7 +41,7 @@ export function appendChunkToState(state, text) {
   state.tokenCount += tokensForChunk(
     accepted > 0 ? text.slice(0, accepted) : "",
   );
-  return true;
+  return accepted > 0;
 }
 
 // Live rate update once enough tokens and time have passed; null before that
