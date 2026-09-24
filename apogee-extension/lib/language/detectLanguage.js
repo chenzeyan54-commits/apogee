@@ -1,5 +1,7 @@
 import { resolveLanguageName } from "../summarize/prompts.js";
 
+export const LANG_DETECT_SAMPLE_CHARS = 2000;
+
 export function baseCode(code) {
   return (code || "").toLowerCase().split("-")[0];
 }
@@ -12,7 +14,7 @@ export async function detectPrimaryLanguage(text) {
   try {
     const i18n = globalThis.chrome?.i18n || globalThis.browser?.i18n;
     if (!i18n?.detectLanguage) return null;
-    const sample = (text || "").slice(0, 2000).trim();
+    const sample = (text || "").slice(0, LANG_DETECT_SAMPLE_CHARS).trim();
     if (!sample) return null;
     const result = await i18n.detectLanguage(sample);
     const langs = result?.languages || [];
