@@ -8,34 +8,10 @@ import {
   replayStreamToPort,
 } from "../../lib/util/streamState.js";
 import { MAX_STREAM_TEXT_CHARS } from "../../lib/extract/fileLimits.js";
-
-function createFakePort({ throwOnPost = false } = {}) {
-  const messages = [];
-  return {
-    messages,
-    postMessage(msg) {
-      if (throwOnPost) {
-        throw new Error("Port disconnected");
-      }
-      messages.push(msg);
-    },
-  };
-}
-
-function withMockClock(fn) {
-  const origNow = performance.now;
-  let currentTime = 1000;
-  performance.now = () => currentTime;
-  const advanceClock = (ms) => {
-    currentTime += ms;
-  };
-
-  try {
-    return fn({ advanceClock });
-  } finally {
-    performance.now = origNow;
-  }
-}
+import {
+  createCollectingPort,
+  withMockPerformanceClock,
+} from "../helpers/streamTestUtils.js";
 
 test("createStreamState initializes default fields and merges extra options", () => {
   const state = createStreamState({ extraFlag: true, customId: 123 });
@@ -66,7 +42,7 @@ test("appendChunkToState ignores empty or cancelled chunks", () => {
 });
 
 test("appendChunkToState sets firstTokenTime and increments text and tokenCount", () => {
-  withMockClock(({ advanceClock }) => {
+  withMockPerformanceClock(({ advanceClock }) => {
     const state = createStreamState();
     const result = appendChunkToState(state, "Hello world");
     assert.strictEqual(result, true);
@@ -103,7 +79,7 @@ test("appendChunkToState caps text at MAX_STREAM_TEXT_CHARS and counts tokens fo
 });
 
 test("warmedStatsForState returns null until time and token thresholds clear", () => {
-  withMockClock(({ advanceClock }) => {
+  withMockPerformanceClock(({ advanceClock }) => {
     const state = createStreamState();
 
     // No firstTokenTime
@@ -129,7 +105,7 @@ test("warmedStatsForState returns null until time and token thresholds clear", (
 });
 
 test("finishStateWithStats computes throughput and sets state.done", () => {
-  withMockClock(({ advanceClock }) => {
+  withMockPerformanceClock(({ advanceClock }) => {
     const state = createStreamState();
     appendChunkToState(state, "Test chunk content for finish state math");
     advanceClock(1000);
@@ -145,7 +121,7 @@ test("finishStateWithStats computes throughput and sets state.done", () => {
 });
 
 test("finishStateWithStats prefers valid serverStats over fallback elapsed math", () => {
-  withMockClock(({ advanceClock }) => {
+  withMockPerformanceClock(({ advanceClock }) => {
     const state = createStreamState();
     appendChunkToState(state, "Short");
     advanceClock(1000);
@@ -163,14 +139,14 @@ test("finishStateWithStats prefers valid serverStats over fallback elapsed math"
 });
 
 test("replayStreamToPort replays chunk and terminal/progress states in order without modifying subscribers", () => {
-  withMockClock(({ advanceClock }) => {
+  withMockPerformanceClock(({ advanceClock }) => {
     // 1. In-progress stream (warmed up)
     const activeState = createStreamState();
     appendChunkToState(activeState, "Hello ");
     for (let i = 0; i < 10; i++) appendChunkToState(activeState, "world ");
     advanceClock(600);
 
-    const port1 = createFakePort();
+    const port1 = createCollectingPort();
     const origSubscribers = new Set(activeState.subscribers);
     replayStreamToPort(activeState, port1, { userFacing: true });
 
@@ -188,7 +164,7 @@ test("replayStreamToPort replays chunk and terminal/progress states in order wit
       text: "Partial",
       cancelled: true,
     });
-    const port2 = createFakePort();
+    const port2 = createCollectingPort();
     replayStreamToPort(cancelledState, port2);
     assert.deepStrictEqual(port2.messages, [
       { type: "chunk", text: "Partial" },
@@ -200,7 +176,7 @@ test("replayStreamToPort replays chunk and terminal/progress states in order wit
       text: "Partial",
       error: "Failed to connect",
     });
-    const port3 = createFakePort();
+    const port3 = createCollectingPort();
     replayStreamToPort(errorState, port3, { userFacing: true });
     assert.deepStrictEqual(port3.messages, [
       { type: "chunk", text: "Partial" },
@@ -213,7 +189,7 @@ test("replayStreamToPort replays chunk and terminal/progress states in order wit
       done: true,
       tokensPerSec: 25,
     });
-    const port4 = createFakePort();
+    const port4 = createCollectingPort();
     replayStreamToPort(doneState, port4);
     assert.deepStrictEqual(port4.messages, [
       { type: "chunk", text: "Complete answer" },
@@ -228,7 +204,7 @@ test("replayStreamToPort safely catches errors if port.postMessage throws", () =
     done: true,
     tokensPerSec: 10,
   });
-  const throwingPort = createFakePort({ throwOnPost: true });
+  const throwingPort = createCollectingPort({ throwOnPost: true });
 
   assert.doesNotThrow(() => {
     replayStreamToPort(doneState, throwingPort);
