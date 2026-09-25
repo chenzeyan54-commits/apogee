@@ -94,7 +94,12 @@ import {
   DEFAULT_OLLAMA_PORT,
   validateLoopbackUrl,
 } from "../lib/util/ollamaHost.js";
-import { broadcastToStream } from "../lib/util/streamBroadcast.js";
+import {
+  broadcastToStream,
+  safeDisconnect,
+  safePost,
+} from "../lib/util/streamBroadcast.js";
+import { tryParseUrl } from "../lib/util/url.js";
 import {
   saveViewState,
   saveViewStateIfJobMatches,
@@ -505,39 +510,23 @@ function relayToOffscreenStream(popupPort, streamId) {
       terminal = true;
       untrackOffscreenRelay(streamId);
     }
-    try {
-      popupPort.postMessage(msg);
-    } catch {
-      // intent: best-effort, ignore if already closed/unavailable
-    }
+    safePost(popupPort, msg);
   });
 
   offscreenPort.onDisconnect.addListener(() => {
     untrackOffscreenRelay(streamId);
     if (!terminal) {
-      try {
-        popupPort.postMessage({
-          type: "error",
-          error: "Connection to local model was lost",
-        });
-      } catch {
-        // intent: best-effort, ignore if already closed/unavailable
-      }
+      safePost(popupPort, {
+        type: "error",
+        error: "Connection to local model was lost",
+      });
     }
-    try {
-      popupPort.disconnect();
-    } catch {
-      // intent: best-effort, ignore if already closed/unavailable
-    }
+    safeDisconnect(popupPort);
   });
 
   popupPort.onDisconnect.addListener(() => {
     untrackOffscreenRelay(streamId);
-    try {
-      offscreenPort.disconnect();
-    } catch {
-      // intent: best-effort, ignore if already closed/unavailable
-    }
+    safeDisconnect(offscreenPort);
   });
 }
 
@@ -1206,11 +1195,7 @@ if (typeof chrome !== "undefined" && chrome.tabs?.onRemoved?.addListener) {
 // broadcast is safe across windows.
 function notifySidePanelsOfTabSwitch() {
   for (const port of sidePanelPorts.values()) {
-    try {
-      port.postMessage({ type: "side-panel-active-tab-changed" });
-    } catch {
-      // intent: best-effort, ignore if already closed/unavailable
-    }
+    safePost(port, { type: "side-panel-active-tab-changed" });
   }
 }
 
@@ -1376,12 +1361,8 @@ export async function fetchBilibiliSubtitlesWithStatus({
   let subUrl = chosen?.subtitle_url;
   if (!subUrl) return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   if (subUrl.startsWith("//")) subUrl = `https:${subUrl}`;
-  let host;
-  try {
-    host = new URL(subUrl).hostname.toLowerCase();
-  } catch {
-    return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
-  }
+  const host = tryParseUrl(subUrl)?.hostname.toLowerCase();
+  if (!host) return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
   if (host !== "hdslb.com" && !host.endsWith(".hdslb.com"))
     return { segments: [], status: SKIP_LOOKUP_STATUS.EMPTY };
 
@@ -1754,22 +1735,14 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
     // Ports are same-extension by construction, but validate the sender like
     // the onMessage handlers do; unknown-name ports are already dropped below.
     if (port.sender?.id !== chrome.runtime.id) {
-      try {
-        port.disconnect();
-      } catch {
-        // intent: best-effort, ignore if already closed/unavailable
-      }
+      safeDisconnect(port);
       return;
     }
     // All port families here (popup-lifecycle, side-panel-tab-*, popup-stream-*)
     // are opened by extension pages, never by tab-hosted contexts — the tab id
     // for side-panel ports travels in the port name instead.
     if (port.sender?.tab) {
-      try {
-        port.disconnect();
-      } catch {
-        // intent: best-effort, ignore if already closed/unavailable
-      }
+      safeDisconnect(port);
       return;
     }
     if (port.name && port.name.startsWith("side-panel-tab-")) {
@@ -1810,21 +1783,13 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
     const stream = activeStreams.get(streamId);
 
     if (!stream) {
-      try {
-        popupPort.postMessage({
-          type: "error",
-          error:
-            "This response is no longer available (its stream expired). " +
-            "Try summarizing again.",
-        });
-      } catch {
-        // intent: best-effort, ignore if already closed/unavailable
-      }
-      try {
-        popupPort.disconnect();
-      } catch {
-        // intent: best-effort, ignore if already closed/unavailable
-      }
+      safePost(popupPort, {
+        type: "error",
+        error:
+          "This response is no longer available (its stream expired). " +
+          "Try summarizing again.",
+      });
+      safeDisconnect(popupPort);
       return;
     }
 

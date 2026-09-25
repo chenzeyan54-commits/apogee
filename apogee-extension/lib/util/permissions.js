@@ -4,6 +4,7 @@
 // grant, so callers must treat access as denied rather than assuming the
 // gated fetch is allowed.
 import { UserFacingError } from "./userError.js";
+import { tryParseUrl } from "./url.js";
 async function queryPermissionsApi(method, origins) {
   if (
     typeof chrome === "undefined" ||
@@ -47,8 +48,8 @@ export async function requestHostPermissions(origins) {
  */
 export function getOptionalOriginsForUrl(url) {
   if (!url || typeof url !== "string") return [];
-  try {
-    const parsed = new URL(url);
+  const parsed = tryParseUrl(url);
+  if (parsed) {
     const host = parsed.hostname.toLowerCase();
     if (host === "bilibili.com" || host.endsWith(".bilibili.com")) {
       return ["*://*.bilibili.com/*", "*://*.hdslb.com/*"];
@@ -71,8 +72,6 @@ export function getOptionalOriginsForUrl(url) {
       // on-demand permission prompt in ensurePermissionsForUrl() never fired.
       return ["*://*.bsky.app/*"];
     }
-  } catch {
-    // intent: fall through to default permissions if URL parsing fails
   }
   return [];
 }
@@ -85,16 +84,13 @@ export function getOptionalOriginsForUrl(url) {
 // @param {string} url Target webpage URL
 // @returns {string[]} Single scoped pattern, or [] for non-web URLs
 export function siteOriginsForUrl(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return [];
-    }
-    if (!parsed.hostname) return [];
-    return [`*://${parsed.hostname}/*`];
-  } catch {
+  const parsed = tryParseUrl(url);
+  if (!parsed) return [];
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return [];
   }
+  if (!parsed.hostname) return [];
+  return [`*://${parsed.hostname}/*`];
 }
 
 /**
@@ -118,12 +114,7 @@ export async function requestSiteAccess(url) {
  * @returns {string}
  */
 export function permissionBlockedMessage(url) {
-  let host = "";
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    // intent: leave host unset if URL is invalid
-  }
+  const host = tryParseUrl(url)?.hostname || "";
   const where = host ? ` ${host}` : " this site";
   return `Apogee needs permission to read${where}. Click Summarize again and choose Allow when the browser asks.`;
 }

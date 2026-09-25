@@ -96,7 +96,7 @@ export default [
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern:
-            "^(extractBalancedJsonText|formatVideoTimestamp|markTranscriptSegments|truncateVideoDescription)$",
+            "^(extractBalancedJsonText|formatVideoTimestamp|markTranscriptSegments|truncateVideoDescription|findEmbeddedJson|tryParseUrl)$",
         },
       ],
     },
@@ -138,6 +138,8 @@ export default [
         formatVideoTimestamp: "readonly",
         markTranscriptSegments: "readonly",
         truncateVideoDescription: "readonly",
+        findEmbeddedJson: "readonly",
+        tryParseUrl: "readonly",
       },
     },
   },

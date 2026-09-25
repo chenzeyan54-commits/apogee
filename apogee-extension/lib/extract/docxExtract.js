@@ -1,5 +1,6 @@
 import { UserFacingError } from "../util/userError.js";
 import {
+  cancelReader,
   MAX_DOCX_ENTRIES,
   MAX_DOCX_EXPANSION_RATIO,
   MAX_DOCX_XML_BYTES,
@@ -73,11 +74,7 @@ async function inflate(bytes) {
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      try {
-        await reader.cancel();
-      } catch {
-        // intent: best-effort reader cleanup
-      }
+      await cancelReader(reader);
       throw new UserFacingError(
         "This DOCX file expands to an unreasonable size and cannot be processed safely.",
       );

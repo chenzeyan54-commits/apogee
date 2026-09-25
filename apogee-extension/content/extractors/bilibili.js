@@ -1,30 +1,18 @@
 function getBiliInitialState() {
   const path = location.pathname.toLowerCase();
-  const scripts = liveEls(document.querySelectorAll("script"));
-  for (const script of scripts) {
-    const text = script?.textContent || "";
-    if (!text || !text.includes("__INITIAL_STATE__")) continue;
-    const assign = text.match(/window\.__INITIAL_STATE__\s*=\s*/);
-    if (!assign) continue;
-    const openIndex = text.indexOf("{", assign.index + assign[0].length);
-    if (openIndex === -1) continue;
-    const json = extractBalancedJsonText(text, openIndex);
-    if (!json) continue;
-    try {
-      const parsed = JSON.parse(json);
+  return findEmbeddedJson(
+    liveEls(document.querySelectorAll("script")),
+    "__INITIAL_STATE__",
+    /window\.__INITIAL_STATE__\s*=\s*/,
+    (parsed) => {
       const bvid = parsed?.bvid || parsed?.videoData?.bvid;
       const aid = parsed?.aid || parsed?.videoData?.aid;
       if (bvid && !path.includes(String(bvid).toLowerCase())) {
-        if (!aid || !path.includes(String(aid).toLowerCase())) {
-          continue;
-        }
+        return !!aid && path.includes(String(aid).toLowerCase());
       }
-      return parsed;
-    } catch {
-      // intent: fall through to next candidate if JSON parse/match fails
-    }
-  }
-  return null;
+      return true;
+    },
+  );
 }
 
 const BILI_TIMESTAMP_MARKER_INTERVAL_SECONDS = 20;

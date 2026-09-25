@@ -1,29 +1,24 @@
 function getPlayerResponse() {
   const currentVideoId = new URLSearchParams(location.search).get("v");
-  for (const script of document.querySelectorAll("script")) {
-    const text = script.textContent;
-    if (!text || !text.includes("ytInitialPlayerResponse")) continue;
-    const assign = text.match(/ytInitialPlayerResponse\s*=\s*/);
-    if (!assign) continue;
-    const openIndex = text.indexOf("{", assign.index + assign[0].length);
-    if (openIndex === -1) continue;
-    const json = extractBalancedJsonText(text, openIndex);
-    if (!json) continue;
-    try {
-      const parsed = JSON.parse(json);
-      if (
-        currentVideoId &&
-        parsed?.videoDetails?.videoId &&
-        parsed.videoDetails.videoId !== currentVideoId
-      ) {
-        continue;
-      }
-      return parsed;
-    } catch {
-      // intent: fall through to next candidate if JSON parse/match fails
-    }
+  return findEmbeddedJson(
+    document.querySelectorAll("script"),
+    "ytInitialPlayerResponse",
+    /ytInitialPlayerResponse\s*=\s*/,
+    (parsed) =>
+      !currentVideoId ||
+      !parsed?.videoDetails?.videoId ||
+      parsed.videoDetails.videoId === currentVideoId,
+  );
+}
+
+// fromCodePoint throws on out-of-range values; keep the raw entity text
+// so one bad code point never drops the whole caption line.
+function codePointOrFallback(match, code) {
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return match;
   }
-  return null;
 }
 
 function decodeHtmlEntities(text) {
@@ -36,30 +31,16 @@ function decodeHtmlEntities(text) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;|&#x27;/gi, "'")
-    .replace(/&#(\d+);/g, (_, n) => {
-      try {
-        return String.fromCodePoint(Number(n));
-      } catch {
-        return _;
-      }
-    })
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => {
-      try {
-        return String.fromCodePoint(parseInt(n, 16));
-      } catch {
-        return _;
-      }
-    })
+    .replace(/&#(\d+);/g, (m, n) => codePointOrFallback(m, Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n) =>
+      codePointOrFallback(m, parseInt(n, 16)),
+    )
     .replace(/&amp;/g, "&");
 }
 
 function isAllowedCaptionUrl(rawUrl) {
-  let url;
-  try {
-    url = new URL(rawUrl, window.location.href);
-  } catch {
-    return false;
-  }
+  const url = tryParseUrl(rawUrl, window.location.href);
+  if (!url) return false;
   if (url.protocol !== "https:") return false;
   const host = url.hostname.toLowerCase();
   const allowedSuffixes = [".youtube.com", ".googlevideo.com"];
@@ -70,13 +51,10 @@ function isAllowedCaptionUrl(rawUrl) {
 }
 
 function captionUrlWithFormat(baseUrl, fmt) {
-  try {
-    const url = new URL(baseUrl, window.location.href);
-    url.searchParams.set("fmt", fmt);
-    return url.toString();
-  } catch {
-    return null;
-  }
+  const url = tryParseUrl(baseUrl, window.location.href);
+  if (!url) return null;
+  url.searchParams.set("fmt", fmt);
+  return url.toString();
 }
 
 async function fetchTranscript(playerResponse) {
