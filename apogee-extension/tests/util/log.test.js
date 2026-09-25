@@ -1,6 +1,30 @@
 import test from "node:test";
 import assert from "node:assert";
-import { sanitizeLogMessage } from "../../lib/util/log.js";
+import {
+  debugLog,
+  initDebugLogging,
+  sanitizeLogMessage,
+} from "../../lib/util/log.js";
+
+test("debugLog prefixes output with [apogee] when enabled", async () => {
+  const calls = [];
+  const origLog = console.log;
+  console.log = (...args) => calls.push(args);
+  globalThis.chrome = {
+    storage: {
+      local: { get: async () => ({ settings: { debugLogs: true } }) },
+      onChanged: { addListener: () => {} },
+    },
+  };
+  try {
+    await initDebugLogging();
+    debugLog("hello");
+  } finally {
+    console.log = origLog;
+    delete globalThis.chrome;
+  }
+  assert.deepStrictEqual(calls, [["[apogee]", "hello"]]);
+});
 
 test("sanitizeLogMessage preserves clean, short log messages", () => {
   const input = "Offscreen document script initialized successfully.";
