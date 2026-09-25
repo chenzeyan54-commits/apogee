@@ -36,7 +36,9 @@ export function createSlidingExpiry({
     if (typeof handle?.unref === "function") {
       try {
         handle.unref();
-      } catch {}
+      } catch {
+        // intent: unref is unsupported in some environments
+      }
     }
     timers.set(id, handle);
   }

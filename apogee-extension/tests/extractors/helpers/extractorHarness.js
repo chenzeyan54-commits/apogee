@@ -53,7 +53,9 @@ export function loadExtractors({
         value: location,
         configurable: true,
       });
-    } catch {}
+    } catch {
+      // intent: some environments don't allow redefining location, ignore
+    }
   }
 
   const sandbox = {
