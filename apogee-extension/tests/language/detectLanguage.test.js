@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert";
 
-import { resolveEffectiveLanguage } from "../../lib/language/detectLanguage.js";
+import {
+  LANG_DETECT_SAMPLE_CHARS,
+  resolveEffectiveLanguage,
+} from "../../lib/language/detectLanguage.js";
 
 function stubDetect(language, percentage = 90) {
   globalThis.chrome = {
@@ -63,6 +66,23 @@ test("unsure/unavailable detection errs toward translating for correctness", asy
   assert.strictEqual(await resolveEffectiveLanguage("text", "es"), "es");
   clearDetect();
   assert.strictEqual(await resolveEffectiveLanguage("text", "es"), "es");
+});
+
+test("detection samples at most LANG_DETECT_SAMPLE_CHARS characters", async () => {
+  let seen = null;
+  globalThis.chrome = {
+    i18n: {
+      detectLanguage: async (sample) => {
+        seen = sample;
+        return { languages: [{ language: "en", percentage: 90 }] };
+      },
+    },
+  };
+  await resolveEffectiveLanguage(
+    `${"x".repeat(LANG_DETECT_SAMPLE_CHARS + 500)}`,
+    "es",
+  );
+  assert.strictEqual(seen.length, LANG_DETECT_SAMPLE_CHARS);
 });
 
 test.after(() => clearDetect());
