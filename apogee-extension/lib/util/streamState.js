@@ -1,5 +1,5 @@
 import { appendStreamTextCapped } from "../extract/fileLimits.js";
-import { safePost } from "./streamBroadcast.js";
+import { broadcastToStream, safePost } from "./streamBroadcast.js";
 import {
   finalTokensPerSecond,
   isWarmedUp,
@@ -30,8 +30,9 @@ export function createStreamState(extra = {}) {
 
 // Capped accumulation for one chunk (#269): keeps the head and drops the
 // tail so a runaway model cannot bloat worker memory. Counts only the
-// accepted prefix toward tokens. Returns false for empty/cancelled chunks,
-// in which case the caller broadcasts nothing.
+// accepted prefix toward tokens. Returns false for empty/cancelled chunks
+// and when the cap accepted zero new chars, in which case the caller
+// broadcasts nothing.
 export function appendChunkToState(state, text) {
   if (!text || state.cancelled) return false;
   const capped = appendStreamTextCapped(state.text, text);
@@ -41,6 +42,20 @@ export function appendChunkToState(state, text) {
   state.tokenCount += tokensForChunk(
     accepted > 0 ? text.slice(0, accepted) : "",
   );
+  return accepted > 0;
+}
+
+// Shared chunk-emit path for the service worker and the offscreen document
+// (#349): same gate, same chunk broadcast, same progress heartbeat, same
+// conditional stats broadcast. Transport stays per-side via scheduleCleanup
+// (alarms in the worker, sliding expiry in offscreen). Returns false when
+// nothing was accepted, in which case nothing goes out.
+export function emitChunkToState(stream, text, scheduleCleanup) {
+  if (!appendChunkToState(stream, text)) return false;
+  broadcastToStream(stream, { type: "chunk", text });
+  scheduleCleanup();
+  const stats = warmedStatsForState(stream);
+  if (stats) broadcastToStream(stream, stats);
   return true;
 }
 

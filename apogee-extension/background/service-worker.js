@@ -13,11 +13,10 @@ import {
 } from "../lib/engines/llamaCppClient.js";
 import { getMaxChunkChars, getMaxChunks } from "../lib/engines/modelLimits.js";
 import {
-  appendChunkToState,
   createStreamState,
+  emitChunkToState,
   finishStateWithStats,
   replayStreamToPort,
-  warmedStatsForState,
 } from "../lib/util/streamState.js";
 import { chunkBySections } from "../lib/summarize/sections.js";
 import { errorHelpUrl } from "../lib/util/errorHelp.js";
@@ -654,15 +653,8 @@ function createBufferedStream(streamId, { finalize, model, title, url }) {
     }
   };
 
-  const emitChunk = (text) => {
-    if (!appendChunkToState(stream, text)) return;
-    broadcastToStream(stream, { type: "chunk", text });
-    // Heartbeat: progress slides the 2-min alarm window so long map-reduce
-    // jobs never expire mid-generation; idle streams still get reclaimed.
-    scheduleStreamCleanup(streamId);
-    const stats = warmedStatsForState(stream);
-    if (stats) broadcastToStream(stream, stats);
-  };
+  const emitChunk = (text) =>
+    emitChunkToState(stream, text, () => scheduleStreamCleanup(streamId));
 
   return { stream, finish, emitChunk };
 }

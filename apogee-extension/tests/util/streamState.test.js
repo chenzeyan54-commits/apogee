@@ -3,6 +3,7 @@ import assert from "node:assert";
 import {
   createStreamState,
   appendChunkToState,
+  emitChunkToState,
   warmedStatsForState,
   finishStateWithStats,
   replayStreamToPort,
@@ -71,11 +72,28 @@ test("appendChunkToState caps text at MAX_STREAM_TEXT_CHARS and counts tokens fo
   const tokensAfterCap = state.tokenCount;
   assert.strictEqual(tokensAfterCap, initialTokens + 1); // exact 1 token for "12345" (accepted 5 chars)
 
-  // Appending past max length returns true, but zero accepted chars added to tokenCount
+  // Appending past max length reports no new text, so callers broadcast nothing
   const res2 = appendChunkToState(state, "extra");
-  assert.strictEqual(res2, true);
+  assert.strictEqual(res2, false);
   assert.strictEqual(state.text.length, MAX_STREAM_TEXT_CHARS);
   assert.strictEqual(state.tokenCount, tokensAfterCap);
+});
+
+test("emitChunkToState broadcasts chunk + heartbeat, and nothing at cap", () => {
+  const state = createStreamState();
+  const port = createCollectingPort();
+  state.subscribers.add(port);
+  let heartbeats = 0;
+  const heartbeat = () => heartbeats++;
+
+  assert.strictEqual(emitChunkToState(state, "hello", heartbeat), true);
+  assert.deepStrictEqual(port.messages, [{ type: "chunk", text: "hello" }]);
+  assert.strictEqual(heartbeats, 1);
+
+  state.text = "a".repeat(MAX_STREAM_TEXT_CHARS);
+  assert.strictEqual(emitChunkToState(state, "more", heartbeat), false);
+  assert.strictEqual(port.messages.length, 1);
+  assert.strictEqual(heartbeats, 1);
 });
 
 test("warmedStatsForState returns null until time and token thresholds clear", () => {
