@@ -131,11 +131,12 @@ test("service worker extends cleanup on local chunks and relayed chunks", () => 
     "../../background/service-worker.js",
     import.meta.url,
   );
-  const emitStart = code.indexOf("const emitChunk = (text) => {");
+  const emitStart = code.indexOf("const emitChunk = (text) =>");
   assert.ok(emitStart !== -1, "createBufferedStream emitChunk exists");
   const emitBody = code.slice(emitStart, emitStart + 600);
   assert.ok(
-    emitBody.includes("scheduleStreamCleanup(streamId)"),
+    emitBody.includes("emitChunkToState") &&
+      emitBody.includes("scheduleStreamCleanup(streamId)"),
     "local-stream chunk path reschedules the cleanup alarm (heartbeat)",
   );
   const relayStart = code.indexOf("function relayToOffscreenStream");
@@ -157,5 +158,17 @@ test("broadcast copies the subscriber set before iterating", () => {
   assert.ok(
     code.includes("[...stream.subscribers]"),
     "broadcast iterates a copy so mid-broadcast disconnects skip nobody",
+  );
+});
+
+test("shared chunk helper heartbeats on every accepted chunk", () => {
+  const code = readSource("../../lib/util/streamState.js", import.meta.url);
+  const helperStart = code.indexOf("export function emitChunkToState");
+  assert.ok(helperStart !== -1, "shared emitChunkToState helper exists");
+  const helperBody = code.slice(helperStart, helperStart + 800);
+  assert.ok(
+    helperBody.includes("broadcastToStream(stream,") &&
+      helperBody.includes("scheduleCleanup()"),
+    "shared chunk path broadcasts and reschedules cleanup (heartbeat)",
   );
 });

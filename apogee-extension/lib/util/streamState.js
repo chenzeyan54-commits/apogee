@@ -1,5 +1,5 @@
 import { appendStreamTextCapped } from "../extract/fileLimits.js";
-import { safePost } from "./streamBroadcast.js";
+import { broadcastToStream, safePost } from "./streamBroadcast.js";
 import {
   finalTokensPerSecond,
   isWarmedUp,
@@ -43,6 +43,20 @@ export function appendChunkToState(state, text) {
     accepted > 0 ? text.slice(0, accepted) : "",
   );
   return accepted > 0;
+}
+
+// Shared chunk-emit path for the service worker and the offscreen document
+// (#349): same gate, same chunk broadcast, same progress heartbeat, same
+// conditional stats broadcast. Transport stays per-side via scheduleCleanup
+// (alarms in the worker, sliding expiry in offscreen). Returns false when
+// nothing was accepted, in which case nothing goes out.
+export function emitChunkToState(stream, text, scheduleCleanup) {
+  if (!appendChunkToState(stream, text)) return false;
+  broadcastToStream(stream, { type: "chunk", text });
+  scheduleCleanup();
+  const stats = warmedStatsForState(stream);
+  if (stats) broadcastToStream(stream, stats);
+  return true;
 }
 
 // Live rate update once enough tokens and time have passed; null before that

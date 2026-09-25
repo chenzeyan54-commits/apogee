@@ -25,11 +25,10 @@ import {
   safePost,
 } from "../lib/util/streamBroadcast.js";
 import {
-  appendChunkToState,
   createStreamState,
+  emitChunkToState,
   finishStateWithStats,
   replayStreamToPort,
-  warmedStatsForState,
 } from "../lib/util/streamState.js";
 import {
   createSlidingExpiry,
@@ -581,9 +580,10 @@ async function runStream(streamId, pending, stream) {
   const emit = (msg) => {
     if (stream.cancelled) return;
     if (msg.type === "chunk") {
-      if (!appendChunkToState(stream, msg.text || "")) return;
-      // Heartbeat: progress slides the expiry window so long jobs survive.
-      scheduleStreamCleanup(streamId);
+      emitChunkToState(stream, msg.text || "", () =>
+        scheduleStreamCleanup(streamId),
+      );
+      return;
     }
     if (msg.type === "done") {
       msg = finishStateWithStats(stream, msg);
@@ -593,10 +593,6 @@ async function runStream(streamId, pending, stream) {
       stream.done = true;
     }
     broadcastToStream(stream, msg);
-    if (msg.type === "chunk") {
-      const stats = warmedStatsForState(stream);
-      if (stats) broadcastToStream(stream, stats);
-    }
 
     if (
       msg.type === "done" &&
