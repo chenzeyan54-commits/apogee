@@ -9,6 +9,16 @@ import {
 } from "./detectLanguage.js";
 import { debugLog } from "../util/log.js";
 
+// Shared detect-then-match for the translate and direct paths below: same
+// empty-text pass-through, same detection, only what happens on mismatch
+// differs. Returns whether the output is already in the target language
+// alongside the detection for the fallback log line.
+async function detectTargetMatch(out, target, detectLanguageFn) {
+  if (!out) return { matches: true, detected: null };
+  const detected = await detectLanguageFn(out);
+  return { matches: detectedMatchesTarget(detected, target), detected };
+}
+
 export async function* streamInTargetLanguage(
   chatFn,
   prompt,
@@ -31,12 +41,12 @@ export async function* streamInTargetLanguage(
     for await (const token of chatFn(prompt, { signal })) out += token;
     if (signal?.aborted) return;
     out = out.trim();
-    if (!out) {
-      yield out;
-      return;
-    }
-    const detected = await detectLanguageFn(out);
-    if (detectedMatchesTarget(detected, target)) {
+    const { matches, detected } = await detectTargetMatch(
+      out,
+      target,
+      detectLanguageFn,
+    );
+    if (matches) {
       yield out;
       return;
     }
@@ -63,8 +73,8 @@ export async function* streamInTargetLanguage(
   if (signal?.aborted) return;
   out = out.trim();
 
-  const detected = await detectLanguageFn(out);
-  if (!out || detectedMatchesTarget(detected, target)) {
+  const { matches } = await detectTargetMatch(out, target, detectLanguageFn);
+  if (matches) {
     yield out;
     return;
   }
