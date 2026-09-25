@@ -14,7 +14,9 @@ export async function initDebugLogging() {
   try {
     const { settings } = await chrome.storage.local.get("settings");
     setDebugLogging(settings?.debugLogs === true);
-  } catch {}
+  } catch {
+    // intent: default to debug logging off if settings unreadable
+  }
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local" || !changes.settings) return;
     setDebugLogging(changes.settings.newValue?.debugLogs === true);

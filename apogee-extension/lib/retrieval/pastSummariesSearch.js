@@ -57,7 +57,9 @@ export async function searchPastSummaries({
     if (queryVector && item.v && Array.isArray(item.v)) {
       try {
         vectorScore = dot(queryVector, item.v);
-      } catch {}
+      } catch {
+        // intent: skip malformed/incompatible vector, leave score unset
+      }
     }
 
     // Combine vector score and keyword match boost
