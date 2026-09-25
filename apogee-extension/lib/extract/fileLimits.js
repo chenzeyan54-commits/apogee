@@ -134,6 +134,27 @@ export function bytesToBase64(bytes) {
 }
 
 /**
+ * Best-effort stream-reader teardown shared by readTextHead below and the
+ * DOCX inflator: cancel/release throw when the reader already closed, and
+ * both call sites want to ignore exactly that.
+ */
+export async function cancelReader(reader) {
+  try {
+    await reader.cancel();
+  } catch {
+    // intent: best-effort reader cleanup
+  }
+}
+
+export function releaseReaderLock(reader) {
+  try {
+    reader.releaseLock();
+  } catch {
+    // intent: best-effort reader cleanup
+  }
+}
+
+/**
  * Read at most maxChars+1 characters of a user-supplied file (#267).
  * file.text() on a 50 MB upload materializes the whole string before the
  * caller can truncate it; streaming slices through a TextDecoder and
@@ -161,17 +182,13 @@ export async function readTextHead(file, maxChars = MAX_PASTED_CHARS) {
       text += decoder.decode(value, { stream: true });
       if (text.length > maxChars) {
         truncated = true;
-        try {
-          await reader.cancel();
-        } catch {}
+        await cancelReader(reader);
         break;
       }
     }
     if (!truncated) text += decoder.decode();
   } finally {
-    try {
-      reader.releaseLock();
-    } catch {}
+    releaseReaderLock(reader);
   }
   if (!truncated) return truncatePastedText(text);
   return truncateWithNote(text.trim(), maxChars, "file");

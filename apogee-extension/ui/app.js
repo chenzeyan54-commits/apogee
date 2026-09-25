@@ -100,6 +100,8 @@ import {
   COULD_NOT_EXTRACT_TEXT_FROM_PDF_ERROR_MSG,
 } from "../lib/util/messages.js";
 import { applyI18nToDom } from "../lib/util/i18n.js";
+import { safeDisconnect } from "../lib/util/streamBroadcast.js";
+import { tryParseUrl } from "../lib/util/url.js";
 
 async function isSidePanelOpenForTab(tabId) {
   if (!tabId || typeof chrome.runtime?.sendMessage !== "function") return false;
@@ -120,9 +122,7 @@ function connectSidePanelPort(tabId) {
   if (!tabId || typeof chrome.runtime?.connect !== "function") return;
   try {
     if (sidePanelPort) {
-      try {
-        sidePanelPort.disconnect();
-      } catch {}
+      safeDisconnect(sidePanelPort);
     }
     sidePanelPort = chrome.runtime.connect({
       name: `side-panel-tab-${tabId}`,
@@ -133,7 +133,9 @@ function connectSidePanelPort(tabId) {
           refreshSidePanelForActiveTab();
         }
       });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   } catch (err) {
     console.error("Failed to connect side-panel port:", err);
   }
@@ -1001,12 +1003,8 @@ document.addEventListener("click", (e) => {
   if (!inCurrentPageView && !inPastSummary) return;
   e.preventDefault();
   const url = anchor.getAttribute("href");
-  let protocol;
-  try {
-    protocol = new URL(url).protocol;
-  } catch {
-    return;
-  }
+  const protocol = tryParseUrl(url)?.protocol;
+  if (!protocol) return;
   if (protocol !== "http:" && protocol !== "https:") return;
   if (inCurrentPageView && activeTabId != null) {
     chrome.tabs.update(activeTabId, { url, active: true });
