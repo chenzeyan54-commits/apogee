@@ -5,6 +5,8 @@ export function broadcastToStream(stream, msg) {
   for (const port of [...stream.subscribers]) {
     try {
       port.postMessage(msg);
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if port already closed
+    }
   }
 }

@@ -253,7 +253,9 @@ function notifyFinalizeFailure({ finalize, error, streamId }) {
         jobId,
         promptsCacheKey,
       });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   }
   try {
     chrome.runtime
@@ -264,11 +266,15 @@ function notifyFinalizeFailure({ finalize, error, streamId }) {
         error: FINALIZE_FAILED_MESSAGE,
       })
       .catch(() => {});
-  } catch {}
+  } catch {
+    // intent: best-effort, ignore if already closed/unavailable
+  }
   if (finalize?.notifyOnFinish) {
     try {
       notifyJobFailed(new UserFacingError(FINALIZE_FAILED_MESSAGE));
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   } else if (!stream) {
     // No popup stream to show the banner and no completion notification
     // requested: the notification is the only user-visible surface left.
@@ -281,7 +287,9 @@ function notifyFinalizeFailure({ finalize, error, streamId }) {
           progress: { progress: 0, text: FINALIZE_FAILED_MESSAGE },
         })
         .catch(() => {});
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   }
 }
 
@@ -462,7 +470,9 @@ function startKeepAlive() {
     }
     try {
       chrome.runtime.getPlatformInfo(() => void chrome.runtime.lastError);
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   }, KEEPALIVE_MS);
   // Node test runners hold the event loop for active intervals; browsers
   // return a number here so this is a no-op in the real worker.
@@ -497,7 +507,9 @@ function relayToOffscreenStream(popupPort, streamId) {
     }
     try {
       popupPort.postMessage(msg);
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   });
 
   offscreenPort.onDisconnect.addListener(() => {
@@ -508,18 +520,24 @@ function relayToOffscreenStream(popupPort, streamId) {
           type: "error",
           error: "Connection to local model was lost",
         });
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
     }
     try {
       popupPort.disconnect();
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   });
 
   popupPort.onDisconnect.addListener(() => {
     untrackOffscreenRelay(streamId);
     try {
       offscreenPort.disconnect();
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   });
 }
 
@@ -1190,7 +1208,9 @@ function notifySidePanelsOfTabSwitch() {
   for (const port of sidePanelPorts.values()) {
     try {
       port.postMessage({ type: "side-panel-active-tab-changed" });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   }
 }
 
@@ -1521,7 +1541,9 @@ async function runSuggestQuestionsJob(payload) {
           status: suggestStatus,
         })
         .catch(() => {});
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   } finally {
     pendingSuggestKeys.delete(promptsCacheKey);
   }
@@ -1647,12 +1669,16 @@ if (typeof chrome.notifications !== "undefined") {
       if (target.tabId != null) {
         await chrome.tabs.update(target.tabId, { active: true });
       }
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore notification-click races
+    }
 
     if (typeof chrome.action?.openPopup === "function") {
       try {
         await chrome.action.openPopup();
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore notification-click races
+      }
     }
   });
 
@@ -1685,7 +1711,9 @@ async function closeOffscreenIfIdle() {
         action: "has-active-streams",
       });
       hasActiveJob = !!resp?.active;
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   }
   if (hasActiveJob || popupConnected) {
     scheduleOffscreenIdleClose();
@@ -1695,7 +1723,9 @@ async function closeOffscreenIfIdle() {
     if (typeof chrome !== "undefined" && chrome.offscreen) {
       await chrome.offscreen.closeDocument();
     }
-  } catch {}
+  } catch {
+    // intent: best-effort, ignore if already closed/unavailable
+  }
   offscreenReady = false;
 }
 
@@ -1726,7 +1756,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
     if (port.sender?.id !== chrome.runtime.id) {
       try {
         port.disconnect();
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
       return;
     }
     // All port families here (popup-lifecycle, side-panel-tab-*, popup-stream-*)
@@ -1735,7 +1767,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
     if (port.sender?.tab) {
       try {
         port.disconnect();
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
       return;
     }
     if (port.name && port.name.startsWith("side-panel-tab-")) {
@@ -1783,10 +1817,14 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect?.addListener) {
             "This response is no longer available (its stream expired). " +
             "Try summarizing again.",
         });
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
       try {
         popupPort.disconnect();
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
       return;
     }
 
@@ -1931,7 +1969,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             url: fallbackUrl,
             text: fallbackText,
           });
-        } catch {}
+        } catch {
+          // intent: best-effort, ignore if already closed/unavailable
+        }
         notifyFinalizeFailure({
           finalize: message.finalize || null,
           title: fallbackTitle,
@@ -2045,7 +2085,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               scheduleStreamCleanup(streamId);
               try {
                 stream.controller?.abort();
-              } catch {}
+              } catch {
+                // intent: best-effort, ignore if already closed/unavailable
+              }
             }
           }
           sendResponse({ ok: true });

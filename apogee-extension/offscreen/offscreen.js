@@ -157,7 +157,9 @@ async function ensureEngine(modelId) {
   if (engine) {
     try {
       await engine.unload();
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
     engine = null;
     currentModelId = null;
   }
@@ -466,7 +468,9 @@ const streamExpiry = createSlidingExpiry({
     for (const port of [...stream.subscribers]) {
       try {
         port.disconnect();
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
     }
   },
 });
@@ -707,7 +711,9 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.sender?.id !== chrome.runtime.id) {
     try {
       port.disconnect();
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
     return;
   }
   // Stream ports are opened by the service-worker relay only; tab-hosted
@@ -715,7 +721,9 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.sender?.tab) {
     try {
       port.disconnect();
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
     return;
   }
   if (!port.name.startsWith("offscreen-stream-")) return;
@@ -731,10 +739,14 @@ chrome.runtime.onConnect.addListener((port) => {
           "This response is no longer available (its stream expired). " +
           "Try summarizing again.",
       });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
     try {
       port.disconnect();
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
     return;
   }
 
@@ -785,11 +797,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             scheduleStreamCleanup(message.payload.streamId);
             try {
               stream.controller?.abort();
-            } catch {}
+            } catch {
+              // intent: best-effort, ignore if already closed/unavailable
+            }
             if (engineOwnerStreamId === message.payload.streamId) {
               try {
                 engine?.interruptGenerate?.();
-              } catch {}
+              } catch {
+                // intent: best-effort, ignore if already closed/unavailable
+              }
             }
           }
           sendResponse({ ok: true });
@@ -901,7 +917,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const adapter = await navigator.gpu.requestAdapter();
               webgpuAvailable = adapter !== null;
             }
-          } catch {}
+          } catch {
+            // intent: best-effort, ignore if WebGPU check fails or is unavailable
+          }
           sendResponse({
             ready: webgpuAvailable,
             currentModel: currentModelId,

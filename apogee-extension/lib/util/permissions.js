@@ -71,7 +71,9 @@ export function getOptionalOriginsForUrl(url) {
       // on-demand permission prompt in ensurePermissionsForUrl() never fired.
       return ["*://*.bsky.app/*"];
     }
-  } catch {}
+  } catch {
+    // intent: fall through to default permissions if URL parsing fails
+  }
   return [];
 }
 
@@ -119,7 +121,9 @@ export function permissionBlockedMessage(url) {
   let host = "";
   try {
     host = new URL(url).hostname;
-  } catch {}
+  } catch {
+    // intent: leave host unset if URL is invalid
+  }
   const where = host ? ` ${host}` : " this site";
   return `Apogee needs permission to read${where}. Click Summarize again and choose Allow when the browser asks.`;
 }

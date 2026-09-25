@@ -151,7 +151,9 @@ export async function extractFromActiveTab(tab) {
           : null,
     });
     injectedVersion = checkResult?.[0]?.result;
-  } catch {}
+  } catch {
+    // intent: version probe is optional, ignore if unavailable
+  }
 
   if (injectedVersion !== expectedVersion) {
     try {

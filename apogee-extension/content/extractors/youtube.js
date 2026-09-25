@@ -19,7 +19,9 @@ function getPlayerResponse() {
         continue;
       }
       return parsed;
-    } catch {}
+    } catch {
+      // intent: fall through to next candidate if JSON parse/match fails
+    }
   }
   return null;
 }
@@ -103,7 +105,9 @@ async function fetchTranscript(playerResponse) {
       if (!raw.trim()) continue;
       const segments = parseTranscript(raw);
       if (segments.length) return segments;
-    } catch {}
+    } catch {
+      // intent: try next transcript URL if fetch/parse fails
+    }
   }
 
   return [];

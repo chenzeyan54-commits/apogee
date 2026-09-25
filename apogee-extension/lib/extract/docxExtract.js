@@ -75,7 +75,9 @@ async function inflate(bytes) {
     if (total > maxBytes) {
       try {
         await reader.cancel();
-      } catch {}
+      } catch {
+        // intent: best-effort reader cleanup
+      }
       throw new UserFacingError(
         "This DOCX file expands to an unreasonable size and cannot be processed safely.",
       );

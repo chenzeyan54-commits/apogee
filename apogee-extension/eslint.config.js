@@ -18,8 +18,8 @@ export default [
       },
     },
     rules: {
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
-      "no-empty": ["error", { allowEmptyCatch: true }],
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-empty": ["error", { allowEmptyCatch: false }],
     },
   },
   {
@@ -34,7 +34,7 @@ export default [
     languageOptions: { sourceType: "script" },
     rules: {
       "no-unused-vars": [
-        "warn",
+        "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^extract" },
       ],
     },
@@ -79,7 +79,7 @@ export default [
     files: ["content/extractors/thread.js"],
     rules: {
       "no-unused-vars": [
-        "warn",
+        "error",
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern:
@@ -92,7 +92,7 @@ export default [
     files: ["content/extractors/video.js"],
     rules: {
       "no-unused-vars": [
-        "warn",
+        "error",
         {
           argsIgnorePattern: "^_",
           varsIgnorePattern:

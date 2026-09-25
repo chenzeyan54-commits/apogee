@@ -122,7 +122,9 @@ function connectSidePanelPort(tabId) {
     if (sidePanelPort) {
       try {
         sidePanelPort.disconnect();
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if already closed/unavailable
+      }
     }
     sidePanelPort = chrome.runtime.connect({
       name: `side-panel-tab-${tabId}`,
@@ -133,7 +135,9 @@ function connectSidePanelPort(tabId) {
           refreshSidePanelForActiveTab();
         }
       });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if already closed/unavailable
+    }
   } catch (err) {
     console.error("Failed to connect side-panel port:", err);
   }

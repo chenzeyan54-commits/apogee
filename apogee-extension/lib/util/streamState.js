@@ -78,26 +78,36 @@ export function replayStreamToPort(stream, port, errorExtra) {
   if (stream.text) {
     try {
       port.postMessage({ type: "chunk", text: stream.text });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if port already closed
+    }
   }
   if (stream.cancelled) {
     try {
       port.postMessage({ type: "cancelled" });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if port already closed
+    }
   } else if (stream.error) {
     try {
       port.postMessage({ type: "error", error: stream.error, ...errorExtra });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if port already closed
+    }
   } else if (stream.done) {
     try {
       port.postMessage({ type: "done", tokensPerSec: stream.tokensPerSec });
-    } catch {}
+    } catch {
+      // intent: best-effort, ignore if port already closed
+    }
   } else if (stream.firstTokenTime != null) {
     const stats = warmedStatsForState(stream);
     if (stats) {
       try {
         port.postMessage(stats);
-      } catch {}
+      } catch {
+        // intent: best-effort, ignore if port already closed
+      }
     }
   }
 }

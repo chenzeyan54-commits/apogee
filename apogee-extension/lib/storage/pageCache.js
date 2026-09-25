@@ -165,7 +165,9 @@ export async function storedBytesInUse(keys) {
     const bytes =
       keys === undefined ? await fn.call(store) : await fn.call(store, keys);
     if (typeof bytes === "number" && Number.isFinite(bytes)) return bytes;
-  } catch {}
+  } catch {
+    // intent: best-effort usage estimate, return null if unsupported
+  }
   return null;
 }
 

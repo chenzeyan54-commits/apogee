@@ -20,7 +20,9 @@ function getBiliInitialState() {
         }
       }
       return parsed;
-    } catch {}
+    } catch {
+      // intent: fall through to next candidate if JSON parse/match fails
+    }
   }
   return null;
 }

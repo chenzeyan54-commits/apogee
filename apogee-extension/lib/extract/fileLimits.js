@@ -163,7 +163,9 @@ export async function readTextHead(file, maxChars = MAX_PASTED_CHARS) {
         truncated = true;
         try {
           await reader.cancel();
-        } catch {}
+        } catch {
+          // intent: best-effort reader cleanup
+        }
         break;
       }
     }
@@ -171,7 +173,9 @@ export async function readTextHead(file, maxChars = MAX_PASTED_CHARS) {
   } finally {
     try {
       reader.releaseLock();
-    } catch {}
+    } catch {
+      // intent: best-effort reader cleanup
+    }
   }
   if (!truncated) return truncatePastedText(text);
   return truncateWithNote(text.trim(), maxChars, "file");
