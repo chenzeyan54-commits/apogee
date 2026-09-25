@@ -9,6 +9,7 @@
  * formatting regex ever misfires, unexpected tags/attributes are escaped
  * instead of sunk into innerHTML.
  */
+import { tryParseUrl } from "./url.js";
 
 export function escapeHtml(text) {
   return String(text)
@@ -40,20 +41,14 @@ function normalizeLinkHost(host) {
 }
 
 export function setLinkifyOriginFromUrl(url) {
-  try {
-    linkifyPageHost = normalizeLinkHost(new URL(url).hostname);
-  } catch {
-    linkifyPageHost = null;
-  }
+  const parsed = tryParseUrl(url);
+  linkifyPageHost = parsed ? normalizeLinkHost(parsed.hostname) : null;
 }
 
 function isLinkifiableHref(href, { allowAlwaysHosts = true } = {}) {
-  let host;
-  try {
-    host = normalizeLinkHost(new URL(href).hostname);
-  } catch {
-    return false;
-  }
+  const parsed = tryParseUrl(href);
+  if (!parsed) return false;
+  const host = normalizeLinkHost(parsed.hostname);
   // Stored past summaries render with the page host nulled and
   // allowAlwaysHosts off (see renderStoredSummaryMarkdown): a planted
   // youtube/bilibili link from a malicious page then stays plain text
@@ -73,12 +68,8 @@ function isLinkifiableHref(href, { allowAlwaysHosts = true } = {}) {
  */
 export function resolveNavigableHttpUrl(href, base) {
   if (typeof href !== "string" || href === "") return null;
-  let resolved;
-  try {
-    resolved = new URL(href, base);
-  } catch {
-    return null;
-  }
+  const resolved = tryParseUrl(href, base);
+  if (!resolved) return null;
   if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
     return null;
   }
@@ -97,12 +88,8 @@ export function isSafeMarkdownHref(href) {
   if (/&(lt|gt|quot);|&#39;|&#x27;/i.test(href)) return false;
   let decoded = href.replace(/&amp;/g, "&");
   if (/[\s<>"']/.test(decoded)) return false;
-  let parsed;
-  try {
-    parsed = new URL(decoded);
-  } catch {
-    return false;
-  }
+  const parsed = tryParseUrl(decoded);
+  if (!parsed) return false;
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return false;
   }

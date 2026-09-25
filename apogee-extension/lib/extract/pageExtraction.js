@@ -4,6 +4,7 @@ import {
   permissionBlockedMessage,
 } from "../util/permissions.js";
 import { MAX_UPLOAD_FILE_BYTES } from "./fileLimits.js";
+import { tryParseUrl } from "../util/url.js";
 
 // Pages the browser itself refuses to let extensions script, even though they are ordinary https URLs. Without this the raw engine error ("The extensions gallery cannot be scripted.") leaks into the popup.
 const BLOCKED_PAGES = [
@@ -26,12 +27,8 @@ export function unscriptableReason(url) {
     return "Apogee can't read this page. Browser-internal pages aren't accessible to extensions, try a regular webpage instead.";
   }
 
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
+  const parsed = tryParseUrl(url);
+  if (!parsed) return null;
 
   const hostname = parsed.hostname.toLowerCase();
   const blocked = BLOCKED_PAGES.find(
@@ -151,7 +148,9 @@ export async function extractFromActiveTab(tab) {
           : null,
     });
     injectedVersion = checkResult?.[0]?.result;
-  } catch {}
+  } catch {
+    // intent: version probe is optional, ignore if unavailable
+  }
 
   if (injectedVersion !== expectedVersion) {
     try {
