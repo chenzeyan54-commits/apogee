@@ -2,6 +2,7 @@ import { getSettings } from "./settings.js";
 import { TRANSLATION_ENGINES } from "../constants.js";
 import { sha256Hex } from "../util/hash.js";
 import { createLock } from "../util/mutex.js";
+import { tryParseUrl } from "../util/url.js";
 import { embedTexts as defaultEmbedTexts } from "../engines/embeddings.js";
 
 const acquireIndexLock = createLock();
@@ -165,7 +166,9 @@ export async function storedBytesInUse(keys) {
     const bytes =
       keys === undefined ? await fn.call(store) : await fn.call(store, keys);
     if (typeof bytes === "number" && Number.isFinite(bytes)) return bytes;
-  } catch {}
+  } catch {
+    // intent: best-effort usage estimate, return null if unsupported
+  }
   return null;
 }
 
@@ -463,12 +466,9 @@ const SENSITIVE_HOST_PATTERNS = [
 ];
 
 export function isSensitiveUrl(url) {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return SENSITIVE_HOST_PATTERNS.some((re) => re.test(host));
-  } catch {
-    return false;
-  }
+  const host = tryParseUrl(url)?.hostname.toLowerCase();
+  if (!host) return false;
+  return SENSITIVE_HOST_PATTERNS.some((re) => re.test(host));
 }
 
 // The list above is fixed, and it can only ever cover the webmail and chat hosts we thought of. A self-hosted mail server, a patient portal, or a company wiki is just as private to the person reading it, so they can name their own hosts. Entries are forgiving about how they are written: a pasted url, a leading "*.", "www.", a trailing slash, and separators of newline, comma, or space all normalize to a bare hostname.
@@ -488,12 +488,8 @@ export function parsePrivateHosts(raw) {
 export function matchesPrivateHost(url, rawHosts) {
   const hosts = parsePrivateHosts(rawHosts);
   if (hosts.length === 0) return false;
-  let host;
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return false;
-  }
+  const host = tryParseUrl(url)?.hostname.toLowerCase();
+  if (!host) return false;
   // A named host covers its subdomains, so "example.com" also means "mail.example.com", the way the built-in patterns behave.
   return hosts.some((entry) => host === entry || host.endsWith(`.${entry}`));
 }

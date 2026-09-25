@@ -13,7 +13,9 @@ export function t(key, substitutions) {
       const msg = api.getMessage(key, substitutions);
       if (msg) return msg;
     }
-  } catch {}
+  } catch {
+    // intent: fall back to default message if i18n API unavailable
+  }
   const fallback = lookupFallback(key);
   if (fallback) return fallback;
   return key;

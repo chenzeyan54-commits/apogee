@@ -1,4 +1,5 @@
 import { appendStreamTextCapped } from "../extract/fileLimits.js";
+import { safePost } from "./streamBroadcast.js";
 import {
   finalTokensPerSecond,
   isWarmedUp,
@@ -77,28 +78,18 @@ export function finishStateWithStats(state, msg) {
 // worker-only userFacing flag; offscreen passes nothing.
 export function replayStreamToPort(stream, port, errorExtra) {
   if (stream.text) {
-    try {
-      port.postMessage({ type: "chunk", text: stream.text });
-    } catch {}
+    safePost(port, { type: "chunk", text: stream.text });
   }
   if (stream.cancelled) {
-    try {
-      port.postMessage({ type: "cancelled" });
-    } catch {}
+    safePost(port, { type: "cancelled" });
   } else if (stream.error) {
-    try {
-      port.postMessage({ type: "error", error: stream.error, ...errorExtra });
-    } catch {}
+    safePost(port, { type: "error", error: stream.error, ...errorExtra });
   } else if (stream.done) {
-    try {
-      port.postMessage({ type: "done", tokensPerSec: stream.tokensPerSec });
-    } catch {}
+    safePost(port, { type: "done", tokensPerSec: stream.tokensPerSec });
   } else if (stream.firstTokenTime != null) {
     const stats = warmedStatsForState(stream);
     if (stats) {
-      try {
-        port.postMessage(stats);
-      } catch {}
+      safePost(port, stats);
     }
   }
 }
