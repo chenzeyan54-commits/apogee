@@ -118,7 +118,7 @@ Each permission and feature serves this one purpose: on-device summarization and
 
 ## Permission justifications
 
-**activeTab** Apogee reads the content of the page the user actively views. It acts only when the user clearly starts it (toolbar click, right-click menu, or keyboard shortcut). It summarizes that page or answers questions about it. activeTab grants access to the current tab on user action. It avoids broad host permissions across all sites.
+**activeTab** Apogee reads the content of the page the user actively views. It acts only when the user clearly starts it (toolbar click, right-click menu, or keyboard shortcut). It summarizes that page or answers questions about it. activeTab grants access to the current tab on user action. It avoids broad host permissions across all sites; the standing all-sites host entry exists only so the persistent side panel keeps working across tab changes (see Host permission justification below).
 
 **scripting** On user action, Apogee injects a content script into the active tab. It pulls the readable text of the page (article body, YouTube transcript, or PDF text) to summarize. It scrolls to the source passage of a summary line and highlights it. It runs only on the tab the user started it on.
 
