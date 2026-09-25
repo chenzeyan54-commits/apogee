@@ -238,6 +238,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Sliding stream expiry so long summaries survive cleanup ([c2ad363](https://github.com/darshi1337/apogee/commit/c2ad363c6a3be137c9e3dcd351d5448983a70df1))
 - [docs] Clarify broad host permission wording ([21032ac](https://github.com/darshi1337/apogee/commit/21032acda0ca57ec31705b270479c4ff1f47d5c8))
 - [chore] Prefix debugLog output with [apogee] ([1962a41](https://github.com/darshi1337/apogee/commit/1962a41bd4a05c2150c66200b019dc054426fce4))
+- [chore] Name the language-detect sample-size constant ([c1c2760](https://github.com/darshi1337/apogee/commit/c1c2760d1e648dcf8c08e35602f45b2cff9bf55f))
 
 ## [0.2.1] - 2026-08-19
 
