@@ -3,10 +3,24 @@
  * Mocks chrome.storage, chrome.runtime, chrome.tabs, and chrome.permissions in Node.js.
  */
 
+// Shared add/removeListener pair for the mock event surfaces below: same
+// array, same removal, only the listener list differs.
+function createListenerList() {
+  const listeners = [];
+  return {
+    listeners,
+    addListener: (fn) => listeners.push(fn),
+    removeListener: (fn) => {
+      const idx = listeners.indexOf(fn);
+      if (idx !== -1) listeners.splice(idx, 1);
+    },
+  };
+}
+
 export function createExtensionApiMock(initialStorage = {}) {
   const storageData = { ...initialStorage };
-  const messageListeners = [];
-  const storageChangeListeners = [];
+  const messageListeners = createListenerList();
+  const storageChangeListeners = createListenerList();
 
   const mockStorage = {
     local: {
@@ -37,7 +51,7 @@ export function createExtensionApiMock(initialStorage = {}) {
           changes[k] = { oldValue: storageData[k], newValue: v };
           storageData[k] = v;
         });
-        storageChangeListeners.forEach((fn) => fn(changes, "local"));
+        storageChangeListeners.listeners.forEach((fn) => fn(changes, "local"));
       },
       remove: async (keys) => {
         const keyList = Array.isArray(keys) ? keys : [keys];
@@ -48,11 +62,8 @@ export function createExtensionApiMock(initialStorage = {}) {
       },
     },
     onChanged: {
-      addListener: (fn) => storageChangeListeners.push(fn),
-      removeListener: (fn) => {
-        const idx = storageChangeListeners.indexOf(fn);
-        if (idx !== -1) storageChangeListeners.splice(idx, 1);
-      },
+      addListener: storageChangeListeners.addListener,
+      removeListener: storageChangeListeners.removeListener,
     },
   };
 
@@ -62,7 +73,7 @@ export function createExtensionApiMock(initialStorage = {}) {
     getURL: (path) => `chrome-extension://mock-extension-id-12345/${path}`,
     sendMessage: async (msg) => {
       let response;
-      for (const listener of messageListeners) {
+      for (const listener of messageListeners.listeners) {
         const sendResponse = (res) => {
           response = res;
         };
@@ -74,11 +85,8 @@ export function createExtensionApiMock(initialStorage = {}) {
       return response;
     },
     onMessage: {
-      addListener: (fn) => messageListeners.push(fn),
-      removeListener: (fn) => {
-        const idx = messageListeners.indexOf(fn);
-        if (idx !== -1) messageListeners.splice(idx, 1);
-      },
+      addListener: messageListeners.addListener,
+      removeListener: messageListeners.removeListener,
     },
   };
 
