@@ -5,12 +5,7 @@ import {
   summarizeText,
   discussionPostExcerpt,
 } from "../../lib/summarize/ollamaSummarize.js";
-
-async function collect(gen) {
-  const out = [];
-  for await (const chunk of gen) out.push(chunk);
-  return out;
-}
+import { collectAsync } from "../helpers/streamTestUtils.js";
 
 test("summarizeText (paragraphs) stops issuing new model calls once the signal is aborted between chunks", async () => {
   const controller = new AbortController();
@@ -21,7 +16,7 @@ test("summarizeText (paragraphs) stops issuing new model calls once the signal i
     controller.abort();
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeText(
       { text: "irrelevant", mode: "paragraphs", signal: controller.signal },
       {
@@ -50,7 +45,7 @@ test("summarizeText (bullets) stops issuing new model calls once the signal is a
     }
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeText(
       { text: "irrelevant", mode: "bullets", signal: controller.signal },
       {
@@ -75,7 +70,7 @@ test("summarizeText (paragraphs) runs every chunk plus the reduce merge when nev
     yield `summary of: ${prompt}`;
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeText(
       { text: "irrelevant", mode: "paragraphs" },
       {
@@ -99,7 +94,7 @@ test("summarizeText (bullets) also runs every chunk plus a final reduce/synthesi
     yield calls <= 2 ? `- bullet from chunk ${calls}\n` : "- merged bullet\n";
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeText(
       { text: "irrelevant", mode: "bullets" },
       {
@@ -123,7 +118,7 @@ test("summarizeText (multi-chunk article) uses extract-then-abstract: extract no
     yield "- extracted point\n";
   }
 
-  await collect(
+  await collectAsync(
     summarizeText(
       { text: "long article", title: "T", url: "u", mode: "bullets" },
       { chunkTextFn: () => ["part A", "part B"], chatStreamFn },
@@ -144,7 +139,7 @@ test("summarizeText dispatches to the YouTube pipeline when type is 'youtube', u
     yield "brief";
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeText(
       {
         text: "[0:00] hello world",
@@ -175,7 +170,7 @@ test("summarizeText dispatches to the video pipeline for type 'bilibili', with B
     yield "brief";
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeText(
       {
         text: "[0:00] ni hao",
@@ -203,7 +198,7 @@ test("summarizeText appends custom instructions to the final summary prompt only
     yield "x";
   }
 
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: "part A part B",
@@ -233,7 +228,7 @@ test("summarizeText applies a focus keyword to the single-chunk prompt, the per-
   }
 
   // Single-chunk (short) path: goes straight through buildSingle.
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: "short article",
@@ -253,7 +248,7 @@ test("summarizeText applies a focus keyword to the single-chunk prompt, the per-
   // synthesis to emphasize. Without this, synthesis focuses on notes that
   // dropped the topic as trivia.
   prompts.length = 0;
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: "part A part B",
@@ -282,7 +277,7 @@ test("summarizeText ignores a focus keyword for discussion-type pages (#161)", a
     yield "note";
   }
 
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: "Reddit discussion\n\nTitle: T\n\nComments (path [n.n] shows the reply tree):\n[1] a: hi",
@@ -309,7 +304,7 @@ test("summarizeText ignores a focus keyword for video pages (#161)", async () =>
     yield "brief";
   }
 
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: "[0:00] hello world",
@@ -349,7 +344,7 @@ test("summarizeText (reddit) prepends the post as context to later chunks but no
     yield "note";
   }
 
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: "Reddit discussion\n\nTitle: T\n\nPost:\nOriginal poster's story.\n\nComments (path [n.n] shows the reply tree):\n[1] a: hi",
@@ -494,7 +489,7 @@ test("summarizeText (long article, Transformers.js model) keeps every chunk and 
   }
 
   const chunks = Array.from({ length: 20 }, (_, i) => `chunk ${i}`);
-  await collect(
+  await collectAsync(
     summarizeText(
       {
         text: chunks.join(" "),

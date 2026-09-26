@@ -21,6 +21,15 @@ export function createCollectingPort({ throwOnPost = false } = {}) {
   };
 }
 
+// Drain an async iterable (token stream, generator) into an array for
+// assertions. Shared by the engine and summarize tests instead of a
+// per-file copy.
+export async function collectAsync(gen) {
+  const out = [];
+  for await (const chunk of gen) out.push(chunk);
+  return out;
+}
+
 export function withMockPerformanceClock(fn) {
   const origNow = performance.now;
   let currentTime = 1000;

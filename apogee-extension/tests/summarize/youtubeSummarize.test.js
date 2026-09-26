@@ -2,12 +2,7 @@ import test from "node:test";
 import assert from "node:assert";
 
 import { summarizeYoutube } from "../../lib/summarize/youtubeSummarize.js";
-
-async function collect(gen) {
-  const out = [];
-  for await (const chunk of gen) out.push(chunk);
-  return out;
-}
+import { collectAsync } from "../helpers/streamTestUtils.js";
 
 test("summarizeYoutube skips the map stage for a single chunk and assembles straight from the transcript", async () => {
   const prompts = [];
@@ -16,7 +11,7 @@ test("summarizeYoutube skips the map stage for a single chunk and assembles stra
     yield "final brief";
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeYoutube(
       {
         text: "[0:00] intro [0:20] middle [0:45] outro",
@@ -48,7 +43,7 @@ test("summarizeYoutube runs a map pass per chunk then a single reduce/assembly p
   }
 
   const progress = [];
-  const result = await collect(
+  const result = await collectAsync(
     summarizeYoutube(
       {
         text: "irrelevant, chunkTextFn stubbed below",
@@ -91,7 +86,7 @@ test("summarizeYoutube caps the map-stage chunk size so a long transcript on a b
   }
 
   const progress = [];
-  await collect(
+  await collectAsync(
     summarizeYoutube(
       {
         text: "[0:00] " + "poker cheating scandal details ".repeat(700),
@@ -122,7 +117,7 @@ test("summarizeYoutube uses the fixed brief + key-moments video format regardles
       prompts.push(prompt);
       yield "brief";
     }
-    await collect(
+    await collectAsync(
       summarizeYoutube(
         {
           text: "[0:00] hello world",
@@ -168,7 +163,7 @@ test("summarizeYoutube assembles a chaptered brief when the content carries a Ch
     "[0:00] hi [0:30] mid [1:00] bye",
   ].join("\n");
 
-  await collect(
+  await collectAsync(
     summarizeYoutube(
       {
         text,
@@ -201,7 +196,7 @@ test("summarizeYoutube stops issuing new model calls once the signal is aborted 
     controller.abort();
   }
 
-  const result = await collect(
+  const result = await collectAsync(
     summarizeYoutube(
       {
         text: "irrelevant",
@@ -249,7 +244,7 @@ test("summarizeYoutube keeps every chunk when the input exceeds the chunk cap an
   }
 
   const progressEvents = [];
-  await collect(
+  await collectAsync(
     summarizeYoutube(
       { text: longText, title: "t", url: "https://youtube.com/watch?v=abc" },
       { chunkTextFn, chatStreamFn, onProgress: (p) => progressEvents.push(p) },

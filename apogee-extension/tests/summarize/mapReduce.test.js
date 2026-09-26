@@ -2,12 +2,7 @@ import test from "node:test";
 import assert from "node:assert";
 
 import { mapReduceStream } from "../../lib/summarize/mapReduce.js";
-
-async function collect(gen) {
-  const out = [];
-  for await (const chunk of gen) out.push(chunk);
-  return out;
-}
+import { collectAsync } from "../helpers/streamTestUtils.js";
 
 function recordingChat(partialFor) {
   const calls = [];
@@ -38,7 +33,7 @@ const NOOP_PROGRESS = () => {};
 
 test("mapReduceStream: in-budget pipeline (3 chunks, budget 12) maps every chunk and runs one final reduce", async () => {
   const { fn, calls } = recordingChat();
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -64,7 +59,7 @@ test("mapReduceStream: at-budget (12 chunks, budget 12) does not enter the tree 
   const progress = [];
   const chunks = Array.from({ length: 12 }, (_, i) => `c${i}`);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -91,7 +86,7 @@ test("mapReduceStream: 13 chunks, budget 12 → 13 map + 1 reduce of all 13 (no 
   const progress = [];
   const chunks = Array.from({ length: 13 }, (_, i) => `c${i}`);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -135,7 +130,7 @@ test("mapReduceStream: 48 chunks, budget 12 → 48 map + 12 first-level reduce +
   const progress = [];
   const chunks = Array.from({ length: 48 }, (_, i) => `c${i}`);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -190,7 +185,7 @@ test("mapReduceStream: 24 chunks, budget 12 → fanIn=2 → 24 map + 12 reduce +
   const { fn, calls } = recordingChat();
   const chunks = Array.from({ length: 24 }, (_, i) => `c${i}`);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -223,7 +218,7 @@ test("mapReduceStream: tree-reduce groups partials in input order", async () => 
 
   const chunks = Array.from({ length: 8 }, (_, i) => `c${i}`);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -243,7 +238,7 @@ test("mapReduceStream: tree-reduce groups partials in input order", async () => 
   // order preservation; that is most visible when the tree fires.
   // Re-run with a smaller budget by using a Transformers model.
   seen.length = 0;
-  await collect(
+  await collectAsync(
     mapReduceStream(
       {
         text: "irrelevant",
@@ -291,7 +286,7 @@ test("mapReduceStream: intermediate reduce tokens reach the consumer", async () 
   }
 
   const chunks = Array.from({ length: 16 }, (_, i) => `c${i}`);
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -321,7 +316,7 @@ test("mapReduceStream: abort between map and reduce stops further model calls", 
   }
 
   const chunks = Array.from({ length: 20 }, (_, i) => `c${i}`);
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h", signal: controller.signal },
       {
@@ -353,7 +348,7 @@ test("mapReduceStream: OOM during map skips the tree and runs final reduce with 
   }
 
   const chunks = Array.from({ length: 12 }, (_, i) => `c${i}`);
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -394,7 +389,7 @@ test("mapReduceStream: OOM during intermediate reduce stops the tree and uses wh
   }
 
   const chunks = Array.from({ length: 8 }, (_, i) => `c${i}`);
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       {
         text: "irrelevant",
@@ -426,7 +421,7 @@ test("mapReduceStream: a custom selectChunksFn wins over the tree-reduce", async
   const chunks = Array.from({ length: 30 }, (_, i) => `c${i}`);
   const selectChunksFn = (all) => all.slice(0, 3);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -455,7 +450,7 @@ test("mapReduceStream: a failing selectChunksFn falls through to the default (no
     throw new Error("selector broken");
   };
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -479,7 +474,7 @@ test("mapReduceStream: final reduce sees at most maxChunks partials, even when m
   const { fn, calls } = recordingChat();
   const chunks = Array.from({ length: 60 }, (_, i) => `c${i}`);
 
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -505,7 +500,7 @@ test("mapReduceStream: final reduce sees at most maxChunks partials, even when m
 test("mapReduceStream: cleanText runs on the input before chunking", async () => {
   const chunkTextFn = (text) => [`cleaned:${text.length}`];
   const { fn, calls } = recordingChat();
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "hello   \n\n\n world ", model: "m", host: "h" },
       { chunkTextFn, chatStreamFn: fn, onProgress: NOOP_PROGRESS },
@@ -530,7 +525,7 @@ test("mapReduceStream: single-chunk fast path uses buildSingle not map/reduce", 
     );
   };
   const chunkTextFn = () => ["only-one"];
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       { chunkTextFn, chatStreamFn: fn, onProgress: NOOP_PROGRESS },
@@ -545,7 +540,7 @@ test("mapReduceStream: single-chunk fast path uses buildSingle not map/reduce", 
 test("mapReduceStream: empty input (no chunks) hits single-chunk fast path with empty string", async () => {
   const { fn, calls } = recordingChat();
   const chunkTextFn = () => [];
-  const out = await collect(
+  const out = await collectAsync(
     mapReduceStream(
       { text: "   ", model: "m", host: "h" },
       { chunkTextFn, chatStreamFn: fn, onProgress: NOOP_PROGRESS },
@@ -566,7 +561,7 @@ test("mapReduceStream: injectable chunkTextFn receives cleaned text and maxChunk
     return ["a"];
   };
   const { fn } = recordingChat();
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "  hello \n\n world  ", model: "m", host: "h" },
       { chunkTextFn, chatStreamFn: fn, onProgress: NOOP_PROGRESS },
@@ -587,7 +582,7 @@ test("mapReduceStream: injectable chatStreamFn receives host, model, and signal"
     seen.push({ host, model, prompt, signal: opts.signal });
     yield "ok";
   }
-  await collect(
+  await collectAsync(
     mapReduceStream(
       {
         text: "irrelevant",
@@ -619,7 +614,7 @@ test("mapReduceStream: stratified sampling via selectChunksFn emits truncated pr
     return all.slice(0, 5);
   };
   const { fn, calls } = recordingChat();
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -646,7 +641,7 @@ test("mapReduceStream: selectChunksFn returning same count does not emit truncat
   const chunks = Array.from({ length: 20 }, (_, i) => `c${i}`);
   const selectChunksFn = (all) => all;
   const { fn } = recordingChat();
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -666,7 +661,7 @@ test("mapReduceStream: selectChunksFn returning empty array falls through to ful
   const chunks = Array.from({ length: 6 }, (_, i) => `c${i}`);
   const selectChunksFn = () => [];
   const { fn, calls } = recordingChat();
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {
@@ -689,7 +684,7 @@ test("mapReduceStream: selectChunksFn returning more than max still goes through
   const selectChunksFn = () => chunks.slice(0, 20);
   const { fn, calls } = recordingChat();
   const progress = [];
-  await collect(
+  await collectAsync(
     mapReduceStream(
       { text: "irrelevant", model: "m", host: "h" },
       {

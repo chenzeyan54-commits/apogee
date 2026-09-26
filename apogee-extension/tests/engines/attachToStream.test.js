@@ -6,19 +6,13 @@ import {
   StreamCancelledError,
 } from "../../lib/engines/providers.js";
 import { toUserMessage } from "../../lib/util/userError.js";
-import { createCollectingPort } from "../helpers/streamTestUtils.js";
-
-async function collect(gen) {
-  const out = [];
-  for await (const chunk of gen) out.push(chunk);
-  return out;
-}
+import { createCollectingPort, collectAsync } from "../helpers/streamTestUtils.js";
 
 test("attachToStream yields buffered chunks and completes on a normal done+disconnect", async () => {
   const port = createCollectingPort();
   globalThis.chrome = { runtime: { connect: () => port } };
 
-  const resultsPromise = collect(attachToStream("stream-1"));
+  const resultsPromise = collectAsync(attachToStream("stream-1"));
   await new Promise((r) => setTimeout(r, 0));
 
   port._emitMessage({ type: "chunk", text: "hello " });
@@ -34,7 +28,7 @@ test("attachToStream reports a live stats message through onStats", async () => 
   globalThis.chrome = { runtime: { connect: () => port } };
 
   const received = [];
-  const resultsPromise = collect(
+  const resultsPromise = collectAsync(
     attachToStream("stream-stats", { onStats: (rate) => received.push(rate) }),
   );
   await new Promise((r) => setTimeout(r, 0));
@@ -53,7 +47,7 @@ test("attachToStream reports the frozen rate on a done message with tokensPerSec
   globalThis.chrome = { runtime: { connect: () => port } };
 
   const received = [];
-  const resultsPromise = collect(
+  const resultsPromise = collectAsync(
     attachToStream("stream-frozen", { onStats: (rate) => received.push(rate) }),
   );
   await new Promise((r) => setTimeout(r, 0));
@@ -71,7 +65,7 @@ test("attachToStream does not call onStats for a done message with no tokensPerS
   globalThis.chrome = { runtime: { connect: () => port } };
 
   let called = false;
-  const resultsPromise = collect(
+  const resultsPromise = collectAsync(
     attachToStream("stream-no-stats", { onStats: () => (called = true) }),
   );
   await new Promise((r) => setTimeout(r, 0));
@@ -88,7 +82,7 @@ test("attachToStream surfaces the sender's error message instead of swallowing i
   const port = createCollectingPort();
   globalThis.chrome = { runtime: { connect: () => port } };
 
-  const run = collect(attachToStream("stream-2"));
+  const run = collectAsync(attachToStream("stream-2"));
   await new Promise((r) => setTimeout(r, 0));
 
   port._emitMessage({ type: "error", error: "Ollama returned an error" });
@@ -119,7 +113,7 @@ test("attachToStream errors (instead of silently truncating) when the port disco
   const port = createCollectingPort();
   globalThis.chrome = { runtime: { connect: () => port } };
 
-  const run = collect(attachToStream("stream-3"));
+  const run = collectAsync(attachToStream("stream-3"));
   await new Promise((r) => setTimeout(r, 0));
 
   port._emitMessage({ type: "chunk", text: "partial" });
@@ -133,7 +127,7 @@ test("attachToStream keeps an error that was written for the user intact", async
   const port = createCollectingPort();
   globalThis.chrome = { runtime: { connect: () => port } };
 
-  const run = collect(attachToStream("stream-user-facing"));
+  const run = collectAsync(attachToStream("stream-user-facing"));
   await new Promise((r) => setTimeout(r, 0));
 
   const written =
@@ -156,7 +150,7 @@ test("attachToStream still lets an unmarked error be mapped to a fallback", asyn
   const port = createCollectingPort();
   globalThis.chrome = { runtime: { connect: () => port } };
 
-  const run = collect(attachToStream("stream-raw"));
+  const run = collectAsync(attachToStream("stream-raw"));
   await new Promise((r) => setTimeout(r, 0));
 
   port._emitMessage({ type: "error", error: "TypeError: fetch failed" });

@@ -7,6 +7,8 @@ import {
   DEFAULT_CONTEXT_TOKENS,
 } from "../../lib/engines/llamaCppClient.js";
 
+import { collectAsync } from "../helpers/streamTestUtils.js";
+
 const HOST = "http://127.0.0.1:8080";
 
 // llama-server frames its stream as `data: {...}` separated by blank lines. The fixtures below are shaped after a real capture from build b10603-c060ca974 serving Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M.
@@ -56,16 +58,10 @@ function stubFetch(impl) {
   };
 }
 
-async function collect(gen) {
-  const out = [];
-  for await (const chunk of gen) out.push(chunk);
-  return out;
-}
-
 async function streamTokens(chunks) {
   const restore = stubFetch(async () => streamingResponse(chunks));
   try {
-    return await collect(chatStream(HOST, "test-model", "prompt"));
+    return await collectAsync(chatStream(HOST, "test-model", "prompt"));
   } finally {
     restore();
   }
@@ -139,7 +135,7 @@ test("chatStream reports timings via onFinalStats when the server sends predicte
   );
   let stats = null;
   try {
-    await collect(
+    await collectAsync(
       chatStream(HOST, "test-model", "prompt", {
         onFinalStats: (s) => {
           stats = s;
@@ -158,7 +154,7 @@ test("chatStream does not call onFinalStats when timings has no predicted_n", as
   );
   let called = false;
   try {
-    await collect(
+    await collectAsync(
       chatStream(HOST, "test-model", "prompt", {
         onFinalStats: () => {
           called = true;
@@ -177,7 +173,7 @@ test("chatStream throws rather than silently skipping a malformed data payload",
   );
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       /malformed response for model 'test-model'/,
     );
   } finally {
@@ -200,7 +196,7 @@ test("chatStream sanitizes a server_error's raw parser dump", async () => {
   );
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       (err) => {
         assert.ok(
           !err.message.includes("json.exception"),
@@ -235,7 +231,7 @@ test("chatStream surfaces a request-shaped error message as written", async () =
   );
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       /Expected 'messages' to be an array/,
     );
   } finally {
@@ -252,7 +248,7 @@ test("chatStream falls back to the status when an error body is not the usual en
   );
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       /502 Bad Gateway/,
     );
   } finally {
@@ -266,7 +262,7 @@ test("chatStream reports a refused connection against the host it tried", async 
   });
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       /Could not connect to llama\.cpp at http:\/\/127\.0\.0\.1:8080/,
     );
   } finally {
@@ -282,7 +278,7 @@ test("chatStream reports an aborted request as a cancellation", async () => {
   });
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       /Generation was cancelled/,
     );
   } finally {
@@ -296,7 +292,7 @@ test("chatStream errors are marked user-facing so they are not remapped", async 
     throw new TypeError("fetch failed");
   });
   try {
-    await assert.rejects(collect(chatStream(HOST, "m", "p")), (err) => {
+    await assert.rejects(collectAsync(chatStream(HOST, "m", "p")), (err) => {
       assert.equal(err.isUserFacing, true);
       return true;
     });
@@ -312,7 +308,7 @@ test("chatStream sends no Authorization header when no key is configured", async
     return streamingResponse([token("hi"), "data: [DONE]"]);
   });
   try {
-    await collect(chatStream(HOST, "m", "p"));
+    await collectAsync(chatStream(HOST, "m", "p"));
     assert.equal(sent.Authorization, undefined);
   } finally {
     restore();
@@ -326,7 +322,7 @@ test("chatStream sends the API key as a bearer token when one is set", async () 
     return streamingResponse([token("hi"), "data: [DONE]"]);
   });
   try {
-    await collect(chatStream(HOST, "m", "p", { apiKey: "test-api-key" }));
+    await collectAsync(chatStream(HOST, "m", "p", { apiKey: "test-api-key" }));
     assert.equal(sent.Authorization, "Bearer test-api-key");
   } finally {
     restore();
@@ -341,7 +337,7 @@ test("chatStream treats a blank API key as no key at all", async () => {
     return streamingResponse([token("hi"), "data: [DONE]"]);
   });
   try {
-    await collect(chatStream(HOST, "m", "p", { apiKey: "   " }));
+    await collectAsync(chatStream(HOST, "m", "p", { apiKey: "   " }));
     assert.equal(sent.Authorization, undefined);
   } finally {
     restore();
@@ -365,7 +361,7 @@ test("chatStream explains a rejected API key instead of echoing the server", asy
   );
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "m", "p", { apiKey: "wrong" })),
+      collectAsync(chatStream(HOST, "m", "p", { apiKey: "wrong" })),
       /rejected the API key.*--api-key/s,
     );
   } finally {
@@ -415,7 +411,7 @@ test("chatStream reports a mid-stream error arriving after a 200", async () => {
   );
   try {
     await assert.rejects(
-      collect(chatStream(HOST, "test-model", "prompt")),
+      collectAsync(chatStream(HOST, "test-model", "prompt")),
       /context window exceeded/,
     );
   } finally {

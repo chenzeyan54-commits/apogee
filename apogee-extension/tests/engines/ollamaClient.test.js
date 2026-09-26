@@ -3,6 +3,7 @@ import assert from "node:assert";
 
 import { chatStream, checkHealth } from "../../lib/engines/ollamaClient.js";
 import { UserFacingError } from "../../lib/util/userError.js";
+import { collectAsync } from "../helpers/streamTestUtils.js";
 
 function createMockStreamResponse(chunks, options = {}) {
   const encoder = new TextEncoder();
@@ -19,14 +20,6 @@ function createMockStreamResponse(chunks, options = {}) {
     statusText: options.statusText ?? "OK",
     headers: options.headers ?? { "Content-Type": "application/x-ndjson" },
   });
-}
-
-async function collectStream(stream) {
-  const chunks = [];
-  for await (const chunk of stream) {
-    chunks.push(chunk);
-  }
-  return chunks;
 }
 
 test("checkHealth: returns connected true and model list on 200 response", async (t) => {
@@ -95,7 +88,7 @@ test("chatStream: streams content chunks successfully", async (t) => {
     return createMockStreamResponse(ndjson);
   };
 
-  const chunks = await collectStream(
+  const chunks = await collectAsync(
     chatStream("http://127.0.0.1:11434", "llama3.2", "Hi", {
       system: "Be concise",
     }),
@@ -130,7 +123,7 @@ test("chatStream: reports eval_count/eval_duration via onFinalStats", async (t) 
   };
 
   let stats = null;
-  await collectStream(
+  await collectAsync(
     chatStream("http://127.0.0.1:11434", "llama3.2", "Hi", {
       onFinalStats: (s) => {
         stats = s;
@@ -154,7 +147,7 @@ test("chatStream: handles non-OK HTTP status with JSON error payload", async (t)
 
   await assert.rejects(
     async () => {
-      await collectStream(
+      await collectAsync(
         chatStream("http://127.0.0.1:11434", "unknown", "Hi"),
       );
     },
@@ -180,7 +173,7 @@ test("chatStream: handles non-OK HTTP status with non-JSON response body", async
 
   await assert.rejects(
     async () => {
-      await collectStream(
+      await collectAsync(
         chatStream("http://127.0.0.1:11434", "llama3.2", "Hi"),
       );
     },
@@ -211,7 +204,7 @@ test("chatStream: throws OllamaError when stream emits in-stream error object", 
 
   await assert.rejects(
     async () => {
-      await collectStream(
+      await collectAsync(
         chatStream("http://127.0.0.1:11434", "llama3.2", "Hi"),
       );
     },
@@ -239,7 +232,7 @@ test("chatStream: throws OllamaError when stream emits malformed JSON line", asy
 
   await assert.rejects(
     async () => {
-      await collectStream(
+      await collectAsync(
         chatStream("http://127.0.0.1:11434", "llama3.2", "Hi"),
       );
     },
@@ -269,7 +262,7 @@ test("chatStream: throws cancellation error when AbortSignal is triggered", asyn
 
   await assert.rejects(
     async () => {
-      await collectStream(
+      await collectAsync(
         chatStream("http://127.0.0.1:11434", "llama3.2", "Hi", {
           signal: controller.signal,
         }),
@@ -295,7 +288,7 @@ test("chatStream: handles connection refusal / network error", async (t) => {
 
   await assert.rejects(
     async () => {
-      await collectStream(
+      await collectAsync(
         chatStream("http://127.0.0.1:11434", "llama3.2", "Hi"),
       );
     },
