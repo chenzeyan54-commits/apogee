@@ -6,7 +6,10 @@ import {
   StreamCancelledError,
 } from "../../lib/engines/providers.js";
 import { toUserMessage } from "../../lib/util/userError.js";
-import { createCollectingPort, collectAsync } from "../helpers/streamTestUtils.js";
+import {
+  createCollectingPort,
+  collectAsync,
+} from "../helpers/streamTestUtils.js";
 
 test("attachToStream yields buffered chunks and completes on a normal done+disconnect", async () => {
   const port = createCollectingPort();

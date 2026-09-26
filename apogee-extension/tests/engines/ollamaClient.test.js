@@ -147,9 +147,7 @@ test("chatStream: handles non-OK HTTP status with JSON error payload", async (t)
 
   await assert.rejects(
     async () => {
-      await collectAsync(
-        chatStream("http://127.0.0.1:11434", "unknown", "Hi"),
-      );
+      await collectAsync(chatStream("http://127.0.0.1:11434", "unknown", "Hi"));
     },
     (err) => {
       assert.ok(err instanceof UserFacingError);
