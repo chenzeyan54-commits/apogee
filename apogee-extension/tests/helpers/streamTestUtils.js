@@ -30,6 +30,25 @@ export async function collectAsync(gen) {
   return out;
 }
 
+// Canned chat-stream stub shared by the summarize and language tests:
+// replays one output per call and records each invocation. Tolerates both
+// lib call conventions — chatStreamFn(host, model, prompt, opts) in the
+// summarize path and chatFn(prompt, opts) in the language path.
+export function makeCannedChat(outputs) {
+  const calls = [];
+  async function* fn(...args) {
+    const last = args[args.length - 1];
+    const opts = last && typeof last === "object" ? last : {};
+    const prompt = typeof args[0] === "string" ? args[0] : args[2];
+    const isTranslate = String(prompt).startsWith(
+      "You are a translation engine",
+    );
+    calls.push({ system: opts.system || null, isTranslate, prompt });
+    yield outputs[calls.length - 1] ?? "out";
+  }
+  return { fn, calls };
+}
+
 export function withMockPerformanceClock(fn) {
   const origNow = performance.now;
   let currentTime = 1000;

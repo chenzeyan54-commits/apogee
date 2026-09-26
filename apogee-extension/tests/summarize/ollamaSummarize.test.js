@@ -5,7 +5,7 @@ import {
   summarizeText,
   discussionPostExcerpt,
 } from "../../lib/summarize/ollamaSummarize.js";
-import { collectAsync } from "../helpers/streamTestUtils.js";
+import { collectAsync, makeCannedChat } from "../helpers/streamTestUtils.js";
 
 test("summarizeText (paragraphs) stops issuing new model calls once the signal is aborted between chunks", async () => {
   const controller = new AbortController();
@@ -365,18 +365,8 @@ test("summarizeText (reddit) prepends the post as context to later chunks but no
   assert.match(prompts[1], /Original poster's story\./);
 });
 
-function makeRecordingChat(outputs) {
-  const calls = [];
-  async function* fn(_host, _model, prompt, opts) {
-    const isTranslate = prompt.startsWith("You are a translation engine");
-    calls.push({ system: opts?.system || null, isTranslate });
-    yield outputs[calls.length - 1] ?? "out";
-  }
-  return { fn, calls };
-}
-
 test("summarizeText target language: compliant first pass emits in ONE pass with a system directive, no translate", async () => {
-  const { fn, calls } = makeRecordingChat(["Resumen en español"]);
+  const { fn, calls } = makeCannedChat(["Resumen en español"]);
   let out = "";
   for await (const t of summarizeText(
     {
@@ -405,7 +395,7 @@ test("summarizeText target language: compliant first pass emits in ONE pass with
 });
 
 test("summarizeText target language: slipped first pass triggers a translate fallback pass", async () => {
-  const { fn, calls } = makeRecordingChat([
+  const { fn, calls } = makeCannedChat([
     "English summary (slipped)",
     "Resumen traducido",
   ]);
@@ -437,7 +427,7 @@ test("summarizeText target language: slipped first pass triggers a translate fal
 });
 
 test("summarizeText with no/auto language streams directly with no system directive and no verify", async () => {
-  const { fn, calls } = makeRecordingChat(["Plain summary"]);
+  const { fn, calls } = makeCannedChat(["Plain summary"]);
   let detectCalled = false;
   let out = "";
   for await (const t of summarizeText(

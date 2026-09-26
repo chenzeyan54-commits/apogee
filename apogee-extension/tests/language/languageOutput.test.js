@@ -5,16 +5,7 @@ import {
   streamInTargetLanguage,
   generateInTargetLanguage,
 } from "../../lib/language/languageOutput.js";
-
-function makeChat(outputs) {
-  const calls = [];
-  const fn = async function* (prompt, opts = {}) {
-    const isTranslate = prompt.startsWith("You are a translation engine");
-    calls.push({ system: opts.system || null, isTranslate, prompt });
-    yield outputs[calls.length - 1] ?? "out";
-  };
-  return { fn, calls };
-}
+import { makeCannedChat } from "../helpers/streamTestUtils.js";
 
 async function collect(gen) {
   let out = "";
@@ -23,7 +14,7 @@ async function collect(gen) {
 }
 
 test("auto/unknown language streams straight through: no system, no detect, no translate", async () => {
-  const { fn, calls } = makeChat(["plain output"]);
+  const { fn, calls } = makeCannedChat(["plain output"]);
   let detectCalled = false;
   const out = await collect(
     streamInTargetLanguage(fn, "PROMPT", "auto", {
@@ -40,7 +31,7 @@ test("auto/unknown language streams straight through: no system, no detect, no t
 });
 
 test("compliant first pass: one pass with a system directive, emitted as-is", async () => {
-  const { fn, calls } = makeChat(["Respuesta en español"]);
+  const { fn, calls } = makeCannedChat(["Respuesta en español"]);
   let onFallback = false;
   const out = await collect(
     streamInTargetLanguage(fn, "PROMPT", "es", {
@@ -58,7 +49,7 @@ test("compliant first pass: one pass with a system directive, emitted as-is", as
 });
 
 test("slipped first pass: falls back to a translate pass and fires onFallback", async () => {
-  const { fn, calls } = makeChat([
+  const { fn, calls } = makeCannedChat([
     "English answer (slip)",
     "Respuesta traducida",
   ]);
@@ -78,7 +69,7 @@ test("slipped first pass: falls back to a translate pass and fires onFallback", 
 });
 
 test("translateFn (opus mode): generates neutrally then uses the MT function, no system directive", async () => {
-  const { fn, calls } = makeChat(["English summary"]);
+  const { fn, calls } = makeCannedChat(["English summary"]);
   const out = await collect(
     streamInTargetLanguage(fn, "PROMPT", "es", {
       translateFn: async (text, lang) => `[${lang}] ${text}`,
@@ -90,7 +81,7 @@ test("translateFn (opus mode): generates neutrally then uses the MT function, no
 });
 
 test("translateFn (opus mode): output already in target skips the translate step and onFallback", async () => {
-  const { fn, calls } = makeChat(["Respuesta ya en español"]);
+  const { fn, calls } = makeCannedChat(["Respuesta ya en español"]);
   let translateCalled = false;
   let onFallback = false;
   const out = await collect(
@@ -116,7 +107,7 @@ test("translateFn (opus mode): output already in target skips the translate step
 });
 
 test("translateFn returning null falls back to the LLM translate pass", async () => {
-  const { fn, calls } = makeChat(["English summary", "traducción LLM"]);
+  const { fn, calls } = makeCannedChat(["English summary", "traducción LLM"]);
   const out = await collect(
     streamInTargetLanguage(fn, "PROMPT", "es", {
       translateFn: async () => null,
@@ -128,7 +119,7 @@ test("translateFn returning null falls back to the LLM translate pass", async ()
 });
 
 test("generateInTargetLanguage buffers the stream into a single string", async () => {
-  const { fn } = makeChat(["dos preguntas"]);
+  const { fn } = makeCannedChat(["dos preguntas"]);
   const out = await generateInTargetLanguage(fn, "PROMPT", "es", {
     detectLanguageFn: async () => "es",
   });
